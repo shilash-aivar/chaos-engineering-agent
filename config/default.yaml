@@ -1,0 +1,39 @@
+environment: staging
+
+safety:
+  allow_prod: false
+  max_replica_percent: 30
+  default_namespace: staging
+  steady_state:
+    error_rate_multiplier: 2.0
+    latency_p99_multiplier: 3.0
+    evaluation_interval_seconds: 15
+
+orchestrator:
+  baseline_capture_seconds: 300
+  adaptive_intensity:
+    start_percent: 10
+    ramp_interval_seconds: 30
+
+integrations:
+  slack:
+    enabled: false
+  github:
+    enabled: false
+    default_labels: [resilience, chaos-agent]
+
+collectors:
+  k8s: true
+  aws: true
+  istio: true
+  prometheus: true
+
+executors:
+  chaos_mesh: true
+  aws_fis: false
+  toxiproxy: true
+  k6: true
+
+red_blue:
+  max_rounds_per_campaign: 3
+  staging_only: true

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chaos-agent.internal/schemas/experiment_plan.json",
+  "title": "ExperimentPlan",
+  "type": "object",
+  "required": ["name", "hypothesis", "targets", "faults", "blast_radius", "watch_metrics", "rollback"],
+  "properties": {
+    "name": { "type": "string" },
+    "hypothesis": { "type": "string" },
+    "source": { "enum": ["human", "llm", "red_agent", "ci", "hybrid"] },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["service", "namespace"],
+        "properties": {
+          "service": { "type": "string" },
+          "namespace": { "type": "string" }
+        }
+      }
+    },
+    "faults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["executor", "type"],
+        "properties": {
+          "executor": { "enum": ["chaos_mesh", "aws_fis", "toxiproxy", "k6"] },
+          "type": { "type": "string" },
+          "target": { "type": "string" },
+          "params": { "type": "object" }
+        }
+      }
+    },
+    "infra_evidence": { "type": "array", "items": { "type": "string" } },
+    "blast_radius": {
+      "type": "object",
+      "properties": {
+        "max_replicas_pct": { "type": "number", "maximum": 30 },
+        "namespace": { "type": "string" },
+        "environment": { "enum": ["development", "staging", "production"] }
+      }
+    },
+    "watch_metrics": { "type": "array", "items": { "type": "string" } },
+    "rollback": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "ttl_seconds": { "type": "integer" }
+      }
+    },
+    "load": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "executor": { "const": "k6" },
+        "script": { "type": "string" },
+        "vus": { "type": "integer" }
+      }
+    }
+  }
+}

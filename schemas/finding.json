@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chaos-agent.internal/schemas/finding.json",
+  "title": "RemediationFinding",
+  "type": "object",
+  "required": ["id", "severity", "evidence", "prescription"],
+  "properties": {
+    "id": { "type": "string" },
+    "severity": { "enum": ["critical", "high", "medium", "low"] },
+    "evidence": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "prescription": {
+      "type": "object",
+      "required": ["scope", "action"],
+      "properties": {
+        "scope": { "enum": ["k8s", "aws", "mesh", "app", "observability"] },
+        "type": { "type": "string" },
+        "action": { "type": "string" },
+        "target": { "type": "string" },
+        "terraform_path": { "type": "string" },
+        "manifest_path": { "type": "string" }
+      }
+    },
+    "verification": { "type": "string" },
+    "ticket": {
+      "type": "object",
+      "properties": {
+        "system": { "enum": ["github", "jira"] },
+        "title": { "type": "string" },
+        "labels": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

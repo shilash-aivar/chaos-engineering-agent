@@ -1,0 +1,81 @@
+# Resilience posture policy — K8s + AWS rules the agent enforces.
+# See src/chaos_agent/posture/rules/ for evaluator implementations.
+
+priority_tiers:
+  critical:
+    value: 1000000
+    match:
+      labels:
+        tier: critical
+  standard:
+    value: 100000
+    default: true
+  batch:
+    value: 10000
+    match:
+      labels:
+        workload: batch
+
+rules:
+  - id: critical-pods-priority-class
+    scope: k8s
+    severity: high
+    when:
+      labels:
+        tier: critical
+    require:
+      priority_class: chaos-critical
+
+  - id: critical-deployment-probes
+    scope: k8s
+    severity: high
+    when:
+      labels:
+        tier: critical
+    require:
+      readiness_probe: true
+      liveness_probe: true
+
+  - id: critical-deployment-pdb
+    scope: k8s
+    severity: medium
+    when:
+      labels:
+        tier: critical
+    require:
+      pod_disruption_budget: true
+
+  - id: critical-rds-multi-az
+    scope: aws
+    severity: critical
+    when:
+      tags:
+        tier: critical
+      service: rds
+    require:
+      multi_az: true
+
+  - id: critical-sqs-dlq
+    scope: aws
+    severity: high
+    when:
+      tags:
+        tier: critical
+      service: sqs
+    require:
+      dead_letter_queue: true
+
+  - id: alb-health-check
+    scope: aws
+    severity: medium
+    when:
+      service: elb
+    require:
+      health_check_path_configured: true
+
+bootstrap:
+  istio:
+    mode: prompt_install  # detect_only | prompt_install | auto_install
+    allowed_environments: [development, staging]
+  priority_class:
+    auto_create_staging: true

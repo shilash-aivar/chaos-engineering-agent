@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chaos-agent.internal/schemas/infra_snapshot.json",
+  "title": "InfraSnapshot",
+  "type": "object",
+  "required": ["captured_at", "context", "kubernetes", "aws"],
+  "properties": {
+    "captured_at": { "type": "string", "format": "date-time" },
+    "context": {
+      "type": "object",
+      "properties": {
+        "cluster": { "type": "string" },
+        "namespace": { "type": "string" },
+        "aws_account": { "type": "string" },
+        "aws_region": { "type": "string" },
+        "environment": { "type": "string" }
+      }
+    },
+    "kubernetes": {
+      "type": "object",
+      "properties": {
+        "deployments": { "type": "array" },
+        "services": { "type": "array" },
+        "priority_classes": { "type": "array" },
+        "istio": { "type": "object" }
+      }
+    },
+    "aws": {
+      "type": "object",
+      "properties": {
+        "rds": { "type": "array" },
+        "load_balancers": { "type": "array" },
+        "sqs_queues": { "type": "array" },
+        "elasticache": { "type": "array" }
+      }
+    },
+    "graph_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "type": { "enum": ["k8s_service", "ingress", "rds", "sqs", "cache"] }
+        }
+      }
+    }
+  }
+}

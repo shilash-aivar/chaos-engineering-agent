@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chaos-agent.internal/schemas/round_score.json",
+  "title": "RoundScore",
+  "type": "object",
+  "required": ["round_id", "experiment_id", "red_score", "blue_score"],
+  "properties": {
+    "round_id": { "type": "string" },
+    "experiment_id": { "type": "string" },
+    "red_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "blue_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "winner": { "enum": ["red", "blue", "draw"] },
+    "red_breakdown": { "type": "object" },
+    "blue_breakdown": { "type": "object" },
+    "slo_breached": { "type": "boolean" },
+    "recovery_seconds": { "type": "number" }
+  }
+}
