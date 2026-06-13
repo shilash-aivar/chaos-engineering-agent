@@ -5,7 +5,8 @@ import type {
   ExperimentDetail,
   ExperimentPlan,
   ExperimentSummary,
-  PostureGap,
+  InfraSnapshot,
+  PostureScanResult,
   RedBlueCampaign,
 } from '@/types'
 
@@ -52,8 +53,13 @@ export async function abortExperiment(id: string) {
   return data
 }
 
-export async function scanPosture() {
-  const { data } = await api.get<{ gaps: PostureGap[]; scanned_at: string }>('/posture/scan')
+export async function scanPosture(namespace = 'staging') {
+  const { data } = await api.get<PostureScanResult>('/posture/scan', { params: { namespace } })
+  return data
+}
+
+export async function getSnapshot(namespace = 'staging') {
+  const { data } = await api.get<InfraSnapshot>('/snapshot', { params: { namespace } })
   return data
 }
 

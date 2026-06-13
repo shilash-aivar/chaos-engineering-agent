@@ -73,6 +73,43 @@ rules:
     require:
       health_check_path_configured: true
 
+  - id: app-circuit-breaker
+    scope: app
+    severity: high
+    when:
+      labels:
+        tier: critical
+    require:
+      circuit_breaker: true
+
+  - id: deps-db-pool-size
+    scope: deps
+    severity: critical
+    when:
+      type: postgres
+    require:
+      min_pool_size: 20
+
+  - id: deps-third-party-timeout
+    scope: deps
+    severity: high
+    when:
+      third_party: true
+    require:
+      client_timeout_seconds: 5
+
+  - id: obs-prometheus-scrape
+    scope: observability
+    severity: critical
+    require:
+      prometheus_healthy: true
+
+  - id: obs-trace-coverage
+    scope: observability
+    severity: high
+    require:
+      critical_path_traced: true
+
 bootstrap:
   istio:
     mode: prompt_install  # detect_only | prompt_install | auto_install

@@ -1,0 +1,38 @@
+"""Plan safety validation — hard limits, not LLM."""
+
+from chaos_agent.config import get_settings
+from chaos_agent.models import ExperimentPlan
+
+
+class SafetyValidationError(ValueError):
+    pass
+
+
+def validate_plan(plan: ExperimentPlan) -> None:
+    settings = get_settings()
+
+    if plan.blast_radius.environment == "production" and not settings.allow_prod:
+        raise SafetyValidationError(
+            "production experiments require CHAOS_AGENT_ALLOW_PROD=true and approval",
+        )
+
+    if plan.blast_radius.max_replicas_pct > settings.max_replica_percent:
+        raise SafetyValidationError(
+            f"blast radius {plan.blast_radius.max_replicas_pct}% exceeds max "
+            f"{settings.max_replica_percent}%",
+        )
+
+    if not plan.faults:
+        raise SafetyValidationError("experiment plan must include at least one fault")
+
+    for fault in plan.faults:
+        if fault.executor.value == "aws_fis":
+            raise SafetyValidationError("aws_fis executor not enabled in phase 1")
+        if fault.executor.value not in ("chaos_mesh", "toxiproxy", "k6"):
+            raise SafetyValidationError(f"executor not enabled: {fault.executor.value}")
+
+    if not plan.watch_metrics:
+        raise SafetyValidationError("watch_metrics required for steady-state guard")
+
+    if plan.rollback.type not in ("delete_chaos_crd", "aws_fis_stop"):
+        raise SafetyValidationError(f"unsupported rollback type: {plan.rollback.type}")

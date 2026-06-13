@@ -7,7 +7,7 @@ name = "chaos-agent"
 version = "0.1.0"
 description = "Internal AI-driven resilience platform — infra-aware chaos, Red/Blue adversarial training, K8s + AWS remediation"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 license = { text = "Proprietary" }
 dependencies = [
     "fastapi>=0.115.0",
@@ -17,12 +17,14 @@ dependencies = [
     "celery[redis]>=5.4.0",
     "redis>=5.2.0",
     "sqlalchemy>=2.0.36",
+    "aiosqlite>=0.20.0",
+    "greenlet>=3.1.0",
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "httpx>=0.28.0",
     "kubernetes>=31.0.0",
     "boto3>=1.35.0",
-    "networkx>=3.4.0",
+    "networkx>=3.2,<3.4",
     "typer>=0.15.0",
     "rich>=13.9.0",
     "structlog>=24.4.0",
@@ -52,7 +54,7 @@ packages = ["src/chaos_agent"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -63,6 +65,6 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.10"
 strict = true
 packages = ["chaos_agent"]

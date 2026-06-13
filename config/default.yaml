@@ -25,6 +25,9 @@ integrations:
 collectors:
   k8s: true
   aws: true
+  app: true
+  dependencies: true
+  observability: true
   istio: true
   prometheus: true
 

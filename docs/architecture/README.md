@@ -7,7 +7,9 @@
 | Orchestration | `orchestrator`, `api`, `workers` | Experiment lifecycle, async jobs, audit |
 | Intelligence | `composer`, `red`, `blue`, `remediator` | LLM planning, adversarial agents, fixes |
 | Execution | `executors` | Chaos Mesh, AWS FIS, Toxiproxy, k6 |
-| Ground truth | `collectors`, `graph`, `posture` | Infra snapshot, topology, gap detection |
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| Ground truth | `collectors`, `graph` | K8s, AWS, **app**, **deps**, **observability** → unified snapshot |
 | Safety | `referee`, `orchestrator/guards` | Blast radius, freeze windows, scoring |
 | Integrations | `integrations` | Slack, GitHub, anchor context |
 

@@ -16,24 +16,11 @@
         "environment": { "type": "string" }
       }
     },
-    "kubernetes": {
-      "type": "object",
-      "properties": {
-        "deployments": { "type": "array" },
-        "services": { "type": "array" },
-        "priority_classes": { "type": "array" },
-        "istio": { "type": "object" }
-      }
-    },
-    "aws": {
-      "type": "object",
-      "properties": {
-        "rds": { "type": "array" },
-        "load_balancers": { "type": "array" },
-        "sqs_queues": { "type": "array" },
-        "elasticache": { "type": "array" }
-      }
-    },
+    "kubernetes": { "type": "object" },
+    "aws": { "type": "object" },
+    "applications": { "type": "array" },
+    "dependencies": { "type": "array" },
+    "observability": { "type": "array" },
     "graph_edges": {
       "type": "array",
       "items": {
@@ -41,7 +28,9 @@
         "properties": {
           "from": { "type": "string" },
           "to": { "type": "string" },
-          "type": { "enum": ["k8s_service", "ingress", "rds", "sqs", "cache"] }
+          "type": {
+            "enum": ["k8s_service", "ingress", "rds", "sqs", "cache", "http_api", "grpc", "kafka", "trace"]
+          }
         }
       }
     }

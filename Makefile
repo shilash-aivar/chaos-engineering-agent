@@ -1,10 +1,14 @@
-.PHONY: install dev lint test run worker migrate tree
+.PHONY: install dev dev-ui lint test run worker migrate tree
 
 install:
 	pip install -e ".[dev]"
+	cd frontend && npm install
 
 dev:
-	uvicorn chaos_agent.api.app:create_app --factory --reload --host 0.0.0.0 --port 8000
+	PYTHONPATH=src CHAOS_AGENT_SIMULATE_EXECUTION=true python3 -m uvicorn chaos_agent.api.app:create_app --factory --reload --host 0.0.0.0 --port 8000
+
+dev-ui:
+	cd frontend && npm run dev
 
 worker:
 	celery -A chaos_agent.workers.celery_app worker --loglevel=info

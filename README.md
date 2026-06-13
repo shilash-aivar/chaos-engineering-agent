@@ -12,6 +12,7 @@ chaos-engineering-agent/
 ├── deploy/                 # kind, Helm, Terraform
 ├── docs/                   # Architecture and runbooks
 ├── schemas/                # JSON schemas (ExperimentPlan, Finding, InfraSnapshot)
+├── frontend/               # React dashboard (Vite + Tailwind)
 ├── scripts/                # Dev and bootstrap scripts
 ├── src/chaos_agent/        # Main Python package
 │   ├── api/                # FastAPI REST + WebSocket
@@ -38,9 +39,17 @@ chaos-engineering-agent/
 
 ```bash
 cp .env.example .env
-pip install -e ".[dev]"
+make install
+
+# Terminal 1 — API
 make dev
+
+# Terminal 2 — UI
+make dev-ui
 ```
+
+- API: http://localhost:8000
+- UI: http://localhost:5173
 
 ```bash
 chaos --help
@@ -48,11 +57,50 @@ chaos status
 chaos run "pod kill on checkout during load"
 ```
 
+## Frontend screens
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Dashboard — stats, recent runs, Red/Blue, posture gaps |
+| `/experiments` | Experiment list and detail |
+| `/new` | NL scenario → LLM plan → approve & run |
+| `/posture` | K8s + AWS + **app** + **deps** + **observability** posture scan |
+| `/red-blue` | Adversarial campaign scoreboard |
+
+## Phase 1 orchestrator (implemented)
+
+- **State machine:** `pending → running → aborting → complete | failed`
+- **Chaos Mesh:** `pod_kill`, `network_latency` CRDs with idempotent rollback
+- **Steady-state guard:** Prometheus baseline + auto-abort on 2× error / 3× latency
+- **Safety validator:** blast radius cap, prod gate, required watch metrics
+- **Storage:** SQLite audit trail + timeline events
+- **Simulation mode:** set `CHAOS_AGENT_SIMULATE_EXECUTION=true` when K8s/Prom unavailable
+
+```bash
+# Force simulation (no cluster required)
+export CHAOS_AGENT_SIMULATE_EXECUTION=true
+make dev
+```
+
+## Target rings (no GCP/Azure)
+
+| Ring | What |
+|------|------|
+| **K8s + AWS** | Chaos Mesh, FIS (later), RDS, SQS, probes |
+| **Application** | Circuit breakers, retries, feature flags |
+| **Dependencies** | Postgres, Redis, Kafka, Stripe, Auth0 via Toxiproxy |
+| **Observability** | Prometheus, Grafana, Tempo, PagerDuty, GitHub |
+
+```bash
+GET /snapshot       # unified dependency graph
+GET /posture/scan   # posture gaps across all rings
+```
+
 ## Phases
 
 | Phase | Focus |
 |-------|--------|
-| 1 | Safe execute: guard, rollback, Chaos Mesh, audit |
+| 1 | **Done (v0.1)** — Orchestrator, Chaos Mesh executor, Prometheus guard, rollback, SQLite audit |
 | 2 | LLM composer + remediation + posture rules |
 | 3 | Red agent + PR-scoped CI + AWS FIS |
 | 4 | Blue agent + closed-loop campaigns in staging |

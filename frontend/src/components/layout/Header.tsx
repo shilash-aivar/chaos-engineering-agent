@@ -4,8 +4,18 @@ const titles: Record<string, string> = {
   '/': 'Dashboard',
   '/experiments': 'Experiments',
   '/new': 'New experiment',
+  '/infrastructure': 'Infrastructure',
+  '/remediation': 'Remediation',
+  '/chaos-dna': 'Chaos DNA',
   '/posture': 'Posture scan',
   '/red-blue': 'Red vs Blue',
+  '/ci-gate': 'CI resilience gate',
+  '/policies': 'Safety policies',
+  '/integrations': 'Integrations',
+  '/observability': 'Observability',
+  '/load-testing': 'Load testing',
+  '/demo': 'UI walkthrough',
+  '/roadmap': 'Product roadmap',
 }
 
 export function Header() {
