@@ -1,16 +1,20 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getChaosDna,
   getFreezeCalendar,
   getInfrastructure,
   getIntegrations,
   getLoadTests,
+  getPluginsEbpfStatus,
+  getPluginsWasm,
   getPolicyPostureRules,
   getPolicyRuntime,
   getPolicyYaml,
   getRefereeScoring,
   getRegressionSuites,
   getTwinAnalysis,
+  savePolicyYaml,
+  testIntegration,
 } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import { useAppStore } from '@/store/appStore'
@@ -75,4 +79,27 @@ export function useFreezeCalendar() {
 
 export function useRegressionSuites() {
   return useQuery({ queryKey: queryKeys.regression, queryFn: getRegressionSuites })
+}
+
+export function usePluginsWasm() {
+  return useQuery({ queryKey: ['plugins', 'wasm'], queryFn: getPluginsWasm })
+}
+
+export function usePluginsEbpf() {
+  return useQuery({ queryKey: ['plugins', 'ebpf'], queryFn: getPluginsEbpfStatus })
+}
+
+export function useTestIntegration() {
+  return useMutation({ mutationFn: testIntegration })
+}
+
+export function useSavePolicyYaml() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: savePolicyYaml,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.policyYaml })
+      queryClient.invalidateQueries({ queryKey: queryKeys.policyRules })
+    },
+  })
 }

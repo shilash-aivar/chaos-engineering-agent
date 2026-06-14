@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import { PageHeader, PageShell } from '@/components/layout/PageChrome'
-import { useIntegrations } from '@/hooks/usePlatform'
+import { useIntegrations, useTestIntegration } from '@/hooks/usePlatform'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function IntegrationsPage() {
   const { data: integrations = [], isLoading } = useIntegrations()
+  const testMutation = useTestIntegration()
+  const [lastResult, setLastResult] = useState<Record<string, string>>({})
 
   if (isLoading) {
     return (
@@ -51,8 +54,23 @@ export function IntegrationsPage() {
                 </Badge>
               ))}
             </div>
-            <Button variant="outline" size="sm" className="mt-3" disabled={integration.status === 'planned'}>
-              {integration.status === 'connected' ? 'Configure' : 'Connect'}
+            {lastResult[integration.id] && (
+              <p className="mt-2 text-xs text-muted-foreground">{lastResult[integration.id]}</p>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              disabled={integration.status === 'planned' || testMutation.isPending}
+              onClick={async () => {
+                const result = await testMutation.mutateAsync(integration.id)
+                setLastResult((prev) => ({
+                  ...prev,
+                  [integration.id]: `${result.ok ? 'OK' : 'Failed'} (${result.latency_ms}ms): ${result.message}`,
+                }))
+              }}
+            >
+              {integration.status === 'connected' ? 'Test connection' : 'Probe'}
             </Button>
           </section>
         ))}

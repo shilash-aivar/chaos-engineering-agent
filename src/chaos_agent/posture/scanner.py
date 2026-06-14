@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, Literal
 
+from chaos_agent.graph.provenance import snapshot_is_live, snapshot_provenance
 from chaos_agent.graph.snapshot import SnapshotBuilder
 from chaos_agent.graph.types import InfraSnapshot
 
@@ -29,6 +30,8 @@ class PostureScanner:
         result = {
             "gaps": gaps,
             "scanned_at": snapshot.captured_at.isoformat(),
+            "collection_sources": snapshot_provenance(snapshot),
+            "live_data": snapshot_is_live(snapshot),
             "summary": {
                 "k8s": sum(1 for g in gaps if g["scope"] == "k8s"),
                 "aws": sum(1 for g in gaps if g["scope"] == "aws"),

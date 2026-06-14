@@ -12,4 +12,13 @@ def client() -> TestClient:
 def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] in ("ok", "degraded")
+    assert "components" in body
+    assert "database" in body["components"]
+    assert response.headers.get("X-Request-ID")
+
+
+def test_request_id_header(client: TestClient) -> None:
+    response = client.get("/health", headers={"X-Request-ID": "test-req-1"})
+    assert response.headers.get("X-Request-ID") == "test-req-1"

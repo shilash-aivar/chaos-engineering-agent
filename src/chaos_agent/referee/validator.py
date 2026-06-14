@@ -7,6 +7,7 @@ from typing import Optional
 
 from chaos_agent.composer.validators.safety import SafetyValidationError, validate_plan
 from chaos_agent.models import ExperimentPlan
+from chaos_agent.plugins.wasm_host import WasmHost
 from chaos_agent.referee.freeze_calendar import active_freeze_reason
 
 
@@ -32,8 +33,6 @@ def validate_plan_for_execution(
         if reason:
             raise RefereeValidationError(reason)
 
-    for fault in plan.faults:
-        if fault.type == "pod_kill" and plan.blast_radius.max_replicas_pct > 20:
-            raise RefereeValidationError(
-                f"pod_kill with blast radius {plan.blast_radius.max_replicas_pct}% exceeds referee cap 20%",
-            )
+    blast_check = WasmHost().validate_blast_radius(int(plan.blast_radius.max_replicas_pct))
+    if not blast_check.passed:
+        raise RefereeValidationError(blast_check.message)

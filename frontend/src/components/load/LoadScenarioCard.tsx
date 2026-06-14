@@ -1,7 +1,9 @@
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import type { LoadTestScenario, LoadTestType } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Link } from 'react-router-dom'
+import { runLoadScenario } from '@/api/client'
 
 const typeVariant: Record<LoadTestType, 'default' | 'warning' | 'success' | 'secondary'> = {
   load: 'default',
@@ -20,6 +22,9 @@ type ScenarioInput = Partial<LoadTestScenario> & {
 }
 
 export function LoadScenarioCard({ scenario }: { scenario: ScenarioInput }) {
+  const navigate = useNavigate()
+  const [running, setRunning] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
   const r = scenario.last_result
   const goal = scenario.goal ?? scenario.hypothesis ?? ''
 
@@ -71,12 +76,32 @@ export function LoadScenarioCard({ scenario }: { scenario: ScenarioInput }) {
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-xs text-muted-foreground">Not run yet — pair with compose experiment</p>
+        <p className="mt-2 text-xs text-muted-foreground">Not run yet — run via API or pair with compose</p>
       )}
 
+      {runError && <p className="mt-2 text-xs text-destructive">{runError}</p>}
+
       <div className="mt-3 flex gap-2">
+        <Button
+          size="sm"
+          disabled={running}
+          onClick={async () => {
+            setRunning(true)
+            setRunError(null)
+            try {
+              const result = await runLoadScenario(scenario.id)
+              navigate(`/experiments/${result.experiment_id}`)
+            } catch (err) {
+              setRunError(err instanceof Error ? err.message : 'Failed to start scenario')
+            } finally {
+              setRunning(false)
+            }
+          }}
+        >
+          {running ? 'Starting…' : 'Run scenario'}
+        </Button>
         <Button variant="outline" size="sm" asChild>
-          <Link to="/new">Use in experiment</Link>
+          <Link to="/new">Customize</Link>
         </Button>
       </div>
     </div>

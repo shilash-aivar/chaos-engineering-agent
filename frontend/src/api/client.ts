@@ -28,7 +28,13 @@ const api = axios.create({
 })
 
 export async function getHealth() {
-  const { data } = await api.get<{ status: string }>('/health')
+  const { data } = await api.get<{
+    status: string
+    version: string
+    environment: string
+    components: Record<string, string>
+    auth_required: boolean
+  }>('/health')
   return data
 }
 
@@ -378,7 +384,59 @@ export async function getPolicyPostureRules() {
 }
 
 export async function getPolicyYaml() {
-  const { data } = await api.get<{ yaml: string }>('/policies/yaml')
+  const { data } = await api.get<{ yaml: string; editable: boolean }>('/policies/yaml')
+  return data
+}
+
+export async function savePolicyYaml(yaml: string) {
+  const { data } = await api.put<{ saved: boolean; path: string; rules_count: number }>(
+    '/policies/yaml',
+    { yaml },
+  )
+  return data
+}
+
+export async function getPluginsWasm() {
+  const { data } = await api.get<{
+    enabled: boolean
+    runtime: string
+    plugins: Array<{ id: string; name: string; runtime: string; builtin: boolean; description?: string }>
+  }>('/plugins/wasm')
+  return data
+}
+
+export async function getPluginsEbpfStatus() {
+  const { data } = await api.get<{
+    enabled: boolean
+    use_tc: boolean
+    simulate: boolean
+    active_programs: Array<Record<string, unknown>>
+    active_count: number
+  }>('/plugins/ebpf/status')
+  return data
+}
+
+export async function testIntegration(integrationId: string) {
+  const { data } = await api.post<{ ok: boolean; message: string; latency_ms: number }>(
+    `/integrations/${integrationId}/test`,
+  )
+  return data
+}
+
+export async function runLoadScenario(
+  scenarioId: string,
+  options?: { namespace?: string; include_fault?: boolean; start?: boolean },
+) {
+  const { data } = await api.post<{
+    experiment_id: string
+    scenario_id: string
+    started: boolean
+    summary: ExperimentSummary
+  }>(`/load-tests/scenarios/${scenarioId}/run`, {
+    namespace: options?.namespace ?? 'staging',
+    include_fault: options?.include_fault ?? true,
+    start: options?.start ?? true,
+  })
   return data
 }
 

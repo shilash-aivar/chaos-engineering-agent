@@ -13,6 +13,7 @@ from chaos_agent.config import get_settings
 from chaos_agent.executors.base import RollbackHandle
 from chaos_agent.executors.aws_fis.executor import AwsFisExecutor
 from chaos_agent.executors.chaos_mesh.executor import ChaosMeshExecutor
+from chaos_agent.executors.ebpf.executor import EbpfExecutor
 from chaos_agent.executors.k6.executor import K6Executor
 from chaos_agent.executors.toxiproxy.executor import ToxiproxyExecutor
 from chaos_agent.models import ExperimentPlan, ExperimentState, FaultExecutor
@@ -40,6 +41,7 @@ class ExperimentEngine:
         self.toxiproxy = ToxiproxyExecutor()
         self.k6 = K6Executor()
         self.aws_fis = AwsFisExecutor()
+        self.ebpf = EbpfExecutor()
         self._running: dict[str, asyncio.Task[None]] = {}
 
     async def start(self, experiment_id: str) -> None:
@@ -93,10 +95,9 @@ class ExperimentEngine:
                     )
                     await session.commit()
                     self.chaos_mesh.simulate = True
-
-                    self.chaos_mesh.simulate = True
                     self.k6.simulate = True
                     self.aws_fis.simulate = True
+                    self.ebpf.simulate = True
 
             try:
                 await repo.set_state(experiment_id, ExperimentState.SIMULATING)
@@ -199,6 +200,22 @@ class ExperimentEngine:
                             experiment_id,
                             "AWS FIS started",
                             f"aws_fis/{fault.type} → {fault.target or 'aws'}",
+                        )
+                        await session.commit()
+                    elif fault.executor == FaultExecutor.EBPF:
+                        handle = await self.ebpf.apply(
+                            experiment_id,
+                            fault,
+                            plan.blast_radius.namespace,
+                            plan.blast_radius.max_replicas_pct,
+                        )
+                        handles.append(handle)
+                        if fault_started_at is None:
+                            fault_started_at = utcnow()
+                        await repo.add_event(
+                            experiment_id,
+                            "Fault injected",
+                            f"ebpf/{fault.type} → {fault.target}",
                         )
                         await session.commit()
 
@@ -323,6 +340,8 @@ class ExperimentEngine:
                     await self.k6.rollback(handle)
                 elif handle.executor == "aws_fis":
                     await self.aws_fis.rollback(handle)
+                elif handle.executor == "ebpf":
+                    await self.ebpf.rollback(handle)
                 else:
                     await self.chaos_mesh.rollback(handle)
             except Exception as exc:
@@ -342,6 +361,8 @@ class ExperimentEngine:
                     await self.k6.rollback(handle)
                 elif handle.executor == "aws_fis":
                     await self.aws_fis.rollback(handle)
+                elif handle.executor == "ebpf":
+                    await self.ebpf.rollback(handle)
                 else:
                     await self.chaos_mesh.rollback(handle)
             except Exception as exc:

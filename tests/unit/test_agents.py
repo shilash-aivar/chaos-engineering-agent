@@ -110,7 +110,7 @@ def test_referee_rejects_high_blast_pod_kill() -> None:
         watch_metrics=["checkout_error_rate"],
         rollback=RollbackSpec(type="delete_chaos_crd"),
     )
-    with pytest.raises(RefereeValidationError, match="referee cap"):
+    with pytest.raises(RefereeValidationError, match="blast radius"):
         validate_plan_for_execution(plan)
 
 

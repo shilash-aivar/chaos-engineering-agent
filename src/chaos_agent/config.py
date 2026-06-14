@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     github_default_branch: str = "main"
     staging_base_url: str = "http://localhost:8080"
     simulate_execution: bool = False
+    ebpf_enabled: bool = True
+    ebpf_use_tc: bool = False
+    wasm_plugins_enabled: bool = True
+    wasm_plugins_dir: str = "plugins/wasm"
+    api_key: str = ""
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     baseline_capture_seconds: int = 60
     guard_interval_seconds: int = 15

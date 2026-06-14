@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from chaos_agent.graph.provenance import snapshot_is_live, snapshot_provenance
 from chaos_agent.graph.snapshot import SnapshotBuilder
 from chaos_agent.graph.types import SnapshotContext
 
@@ -78,4 +79,6 @@ async def get_infrastructure_rings(namespace: str = "staging") -> dict[str, Any]
         "rings": rings,
         "snapshot": snapshot.model_dump(mode="json"),
         "namespace": namespace,
+        "collection_sources": snapshot_provenance(snapshot),
+        "live_data": snapshot_is_live(snapshot),
     }

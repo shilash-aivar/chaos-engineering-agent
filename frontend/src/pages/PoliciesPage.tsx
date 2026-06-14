@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { PageHeader, PageShell } from '@/components/layout/PageChrome'
-import { usePolicyPostureRules, usePolicyRuntime, usePolicyYaml } from '@/hooks/usePlatform'
+import {
+  usePluginsEbpf,
+  usePluginsWasm,
+  usePolicyPostureRules,
+  usePolicyRuntime,
+  usePolicyYaml,
+  useSavePolicyYaml,
+} from '@/hooks/usePlatform'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +18,9 @@ export function PoliciesPage() {
   const runtime = usePolicyRuntime()
   const rules = usePolicyPostureRules()
   const yaml = usePolicyYaml()
+  const wasm = usePluginsWasm()
+  const ebpf = usePluginsEbpf()
+  const saveYaml = useSavePolicyYaml()
   const [policyYaml, setPolicyYaml] = useState('')
   const [dirty, setDirty] = useState(false)
 
@@ -36,6 +46,7 @@ export function PoliciesPage() {
         <TabsList>
           <TabsTrigger value="runtime">Runtime limits</TabsTrigger>
           <TabsTrigger value="posture">Posture rules</TabsTrigger>
+          <TabsTrigger value="plugins">Wasm / eBPF</TabsTrigger>
           <TabsTrigger value="yaml">Policy YAML</TabsTrigger>
         </TabsList>
 
@@ -104,20 +115,61 @@ export function PoliciesPage() {
           </section>
         </TabsContent>
 
+        <TabsContent value="plugins" className="space-y-4">
+          <section className="surface-card rounded-lg p-5">
+            <h2 className="text-sm font-semibold">Wasm plugins</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Runtime: {wasm.data?.runtime ?? '…'} · {wasm.data?.enabled ? 'enabled' : 'disabled'}
+            </p>
+            <div className="mt-3 space-y-2">
+              {(wasm.data?.plugins ?? []).map((plugin) => (
+                <div key={plugin.id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium">{plugin.name}</p>
+                    {plugin.description && (
+                      <p className="text-xs text-muted-foreground">{plugin.description}</p>
+                    )}
+                  </div>
+                  <Badge variant="outline">{plugin.runtime}</Badge>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="surface-card rounded-lg p-5">
+            <h2 className="text-sm font-semibold">eBPF executor</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {ebpf.data?.enabled ? 'Enabled' : 'Disabled'} · TC netem: {ebpf.data?.use_tc ? 'on' : 'off'} ·{' '}
+              {ebpf.data?.active_count ?? 0} active program(s)
+            </p>
+          </section>
+        </TabsContent>
+
         <TabsContent value="yaml">
           <section className="surface-card rounded-lg p-5">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">resilience-policy.yaml</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setPolicyYaml(yaml.data?.yaml ?? '')
-                  setDirty(false)
-                }}
-              >
-                Reset
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setPolicyYaml(yaml.data?.yaml ?? '')
+                    setDirty(false)
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!dirty || saveYaml.isPending}
+                  onClick={async () => {
+                    await saveYaml.mutateAsync(yamlText)
+                    setDirty(false)
+                  }}
+                >
+                  Save to server
+                </Button>
+              </div>
             </div>
             <Textarea
               className="min-h-[420px] font-mono text-xs"
@@ -128,7 +180,8 @@ export function PoliciesPage() {
               }}
             />
             <p className="mt-2 text-[10px] text-muted-foreground">
-              {dirty ? 'Local edits — persist via config/policies/ in repo.' : 'Loaded from server.'}
+              {dirty ? 'Unsaved local edits.' : 'Loaded from server.'}
+              {saveYaml.isSuccess ? ' Saved.' : ''}
             </p>
           </section>
         </TabsContent>

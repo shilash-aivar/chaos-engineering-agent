@@ -7,9 +7,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from chaos_agent.collectors.loki.client import LokiClient
+from chaos_agent.collectors.ebpf.collector import EbpfCollector
 from chaos_agent.collectors.prometheus.client import PrometheusClient, promql_for_metric
 from chaos_agent.collectors.tempo.client import TempoClient
-from chaos_agent.models import ExperimentPlan
+from chaos_agent.models import ExperimentPlan, FaultExecutor
 from chaos_agent.observability.catalog import (
     load_catalog,
     resolve_metrics_for_services,
@@ -71,9 +72,14 @@ class ObservabilityCorrelator:
         fault_targets = [f.target for f in plan.faults if f.target]
         services = resolve_services_for_plan(target_services, fault_targets, plan.watch_metrics, self.catalog)
         metrics = resolve_metrics_for_services(services, plan.watch_metrics, self.catalog)
+        ebpf_faults = [f for f in plan.faults if f.executor == FaultExecutor.EBPF]
+        ebpf_metrics: dict = {}
+        if ebpf_faults:
+            fault_type = ebpf_faults[0].type
+            ebpf_metrics = await EbpfCollector().collect(experiment_id, fault_type=fault_type)
 
         if simulate:
-            return self._simulate_evidence(
+            evidence = self._simulate_evidence(
                 experiment_id,
                 plan,
                 baseline,
@@ -83,6 +89,10 @@ class ObservabilityCorrelator:
                 services,
                 slo_breached,
             )
+            if ebpf_metrics:
+                evidence.ebpf_metrics = ebpf_metrics
+                evidence.correlations.extend(self._ebpf_correlations(ebpf_metrics))
+            return evidence
 
         metric_samples, log_summaries, trace_summaries = await asyncio.gather(
             self._fetch_metrics(metrics, baseline, window_start, window_end),
@@ -90,6 +100,7 @@ class ObservabilityCorrelator:
             self._fetch_traces(services, window_start, window_end),
         )
         correlations = self._correlate(metric_samples, log_summaries, slo_breached)
+        correlations.extend(self._ebpf_correlations(ebpf_metrics))
         return FaultWindowEvidence(
             experiment_id=experiment_id,
             window_start=window_start,
@@ -99,6 +110,7 @@ class ObservabilityCorrelator:
             logs=log_summaries,
             traces=trace_summaries,
             correlations=correlations,
+            ebpf_metrics=ebpf_metrics,
         )
 
     async def _fetch_metrics(
@@ -225,6 +237,25 @@ class ObservabilityCorrelator:
             noisy = [lg.service for lg in logs if lg.error_count > 0]
             if breached and noisy:
                 lines.append(f"Metric spikes ({', '.join(breached)}) align with log errors in {', '.join(noisy)}")
+        return lines
+
+    def _ebpf_correlations(self, ebpf_metrics: dict) -> list[str]:
+        if not ebpf_metrics:
+            return []
+        lines: list[str] = []
+        source = ebpf_metrics.get("source", "unknown")
+        if ebpf_metrics.get("tcp_retransmits", 0) > 5:
+            lines.append(
+                f"eBPF ({source}): {ebpf_metrics['tcp_retransmits']} TCP retransmits during fault window",
+            )
+        if ebpf_metrics.get("dropped_packets", 0) > 0:
+            lines.append(
+                f"eBPF ({source}): {ebpf_metrics['dropped_packets']} dropped packets observed",
+            )
+        if ebpf_metrics.get("connect_errors", 0) > 0:
+            lines.append(
+                f"eBPF ({source}): {ebpf_metrics['connect_errors']} connect errors blocked",
+            )
         return lines
 
     def _simulate_evidence(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +41,7 @@ class FaultWindowEvidence(BaseModel):
     logs: list[LogSummary] = Field(default_factory=list)
     traces: list[TraceSummary] = Field(default_factory=list)
     correlations: list[str] = Field(default_factory=list)
+    ebpf_metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class ObservabilityBackendStatus(BaseModel):

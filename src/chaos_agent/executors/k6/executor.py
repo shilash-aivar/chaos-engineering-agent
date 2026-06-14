@@ -31,7 +31,7 @@ class K6Executor:
         return RollbackHandle(
             experiment_id=experiment_id,
             executor="k6",
-            simulated=True,
+            simulated=self.simulate,
         )
 
     async def rollback(self, handle: RollbackHandle) -> None:

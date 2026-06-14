@@ -32,6 +32,7 @@ class FaultExecutor(str, Enum):
     AWS_FIS = "aws_fis"
     TOXIPROXY = "toxiproxy"
     K6 = "k6"
+    EBPF = "ebpf"
 
 
 class Severity(str, Enum):

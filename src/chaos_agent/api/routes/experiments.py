@@ -1,5 +1,7 @@
 from typing import Any, Optional
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -13,6 +15,7 @@ from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ComposeRequest(BaseModel):
@@ -81,6 +84,7 @@ async def create_experiment(plan: ExperimentPlan) -> dict:
             await repo.set_state(row.id, ExperimentState.AWAITING_APPROVAL)
             await repo.add_event(row.id, "Awaiting approval", "Production experiment needs referee sign-off")
             await session.commit()
+            notification_sent = False
             try:
                 from chaos_agent.integrations.slack.client import SlackClient
 
@@ -92,9 +96,12 @@ async def create_experiment(plan: ExperimentPlan) -> dict:
                         plan.blast_radius.environment,
                         api_base=settings.api_public_url,
                     )
-            except Exception:
-                pass
-            return repo.summary_dict(await repo.get(row.id))
+                    notification_sent = True
+            except Exception as exc:
+                logger.warning("slack_approval_notify_failed", extra={"experiment_id": row.id, "error": str(exc)})
+            summary = repo.summary_dict(await repo.get(row.id))
+            summary["notification_sent"] = notification_sent
+            return summary
 
         summary = repo.summary_dict(row)
 
