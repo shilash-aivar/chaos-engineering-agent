@@ -1,9 +1,10 @@
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
-import { demoChaosDna } from '@/demo/mockData'
-import { DemoResilienceTrend } from '@/components/demo/DemoResilienceTrend'
-import { PreviewBanner, PhaseBadge } from '@/components/shared/PreviewBanner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { PageHeader, PageShell, StatCard } from '@/components/layout/PageChrome'
+import { useChaosDna } from '@/hooks/usePlatform'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dna } from 'lucide-react'
 
 const trendIcon = {
   up: TrendingUp,
@@ -12,49 +13,60 @@ const trendIcon = {
 }
 
 export function ChaosDnaPage() {
-  return (
-    <div className="space-y-6">
-      <PreviewBanner phase={4} liveHint="Chaos DNA tracks per-service resilience over repeated experiments and Red/Blue rounds." />
+  const { data, isLoading } = useChaosDna()
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DemoResilienceTrend />
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Org resilience score</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-bold">73</p>
-            <p className="text-xs text-muted-foreground">+15 over 6 weeks · staging aggregate</p>
-            <div className="mt-4 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span>Faults survived (avg)</span>
-                <span className="font-medium">2.8 / service</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Mean time to recover</span>
-                <span className="font-medium">94s</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Regression suites</span>
-                <span className="font-medium">12 passing</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+  if (isLoading) {
+    return (
+      <PageShell>
+        <Skeleton className="h-96 rounded-lg" />
+      </PageShell>
+    )
+  }
+
+  return (
+    <PageShell>
+      <PageHeader
+        title="Chaos DNA"
+        description="Per-service resilience profiles aggregated from experiments and Red/Blue campaigns."
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-4">
+        <StatCard icon={Dna} label="Org score" value={data?.org_score ?? 0} accent="amber" />
+        <StatCard icon={Dna} label="Faults survived (avg)" value={data?.faults_survived_avg ?? 0} accent="teal" />
+        <StatCard icon={Dna} label="MTTR" value={`${data?.mttr_seconds ?? 0}s`} accent="sky" />
+        <StatCard icon={Dna} label="Regression suites" value={data?.regression_suites_passing ?? 0} accent="neutral" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Service profiles</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Historical fault survival, weak points, and score trend per service
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {demoChaosDna.map((profile) => {
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="surface-card rounded-lg p-5">
+          <h2 className="text-sm font-semibold">Score trend</h2>
+          <div className="mt-4 h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data?.history ?? []}>
+                <XAxis dataKey="week" tick={{ fontSize: 10 }} />
+                <YAxis domain={[50, 100]} tick={{ fontSize: 10 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+        <section className="surface-card rounded-lg p-5">
+          <h2 className="text-sm font-semibold">Org resilience</h2>
+          <p className="mt-2 text-4xl font-bold">{data?.org_score}</p>
+          <p className="text-xs text-muted-foreground">{data?.org_delta}</p>
+        </section>
+      </div>
+
+      <section className="surface-card mt-6 rounded-lg">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold">Service profiles</h2>
+        </div>
+        <div className="divide-y divide-border">
+          {(data?.profiles ?? []).map((profile) => {
             const Icon = trendIcon[profile.trend]
             return (
-              <div key={profile.service} className="rounded-md border border-border p-4">
+              <div key={profile.service} className="px-5 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{profile.service}</span>
@@ -62,7 +74,9 @@ export function ChaosDnaPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-bold">{profile.resilience_score}</span>
-                    <Icon className={`h-4 w-4 ${profile.trend === 'up' ? 'text-success' : profile.trend === 'down' ? 'text-destructive' : 'text-muted-foreground'}`} />
+                    <Icon
+                      className={`h-4 w-4 ${profile.trend === 'up' ? 'text-success' : profile.trend === 'down' ? 'text-destructive' : 'text-muted-foreground'}`}
+                    />
                   </div>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
@@ -70,33 +84,23 @@ export function ChaosDnaPage() {
                     <p className="text-muted-foreground">Survived</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {profile.faults_survived.map((f) => (
-                        <Badge key={f} variant="success">{f}</Badge>
+                        <Badge key={f} variant="success">
+                          {f}
+                        </Badge>
                       ))}
                     </div>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Weak points</p>
-                    <p className="mt-1 text-foreground">{profile.weak_points.join(' · ')}</p>
+                    <p className="mt-1">{profile.weak_points.join(' · ')}</p>
                   </div>
                 </div>
                 <p className="mt-2 text-[10px] text-muted-foreground">Last tested {profile.last_tested}</p>
               </div>
             )
           })}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="flex items-center justify-between p-4">
-          <div>
-            <p className="text-sm font-medium">Score history export</p>
-            <p className="text-xs text-muted-foreground">
-              Feed Chaos DNA into quarterly resilience reviews and team scorecards
-            </p>
-          </div>
-          <PhaseBadge status="planned" phase={4} />
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </section>
+    </PageShell>
   )
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Optional
 
 import httpx
@@ -26,6 +27,10 @@ METRIC_QUERIES: dict[str, str] = {
     "inventory_upstream_errors": 'sum(rate(http_requests_total{service="inventory-api",status=~"5.."}[2m]))',
     "db_connection_errors": "sum(rate(db_connection_errors_total[2m]))",
 }
+
+
+def promql_for_metric(name: str) -> str:
+    return METRIC_QUERIES.get(name, METRIC_QUERIES["error_rate"])
 
 
 class PrometheusClient:
@@ -56,10 +61,63 @@ class PrometheusClient:
         except (TypeError, ValueError, IndexError):
             return None
 
+    async def query_range(
+        self,
+        promql: str,
+        start: datetime,
+        end: datetime,
+        *,
+        step: str = "15s",
+    ) -> list[tuple[float, float]]:
+        """Return (unix_ts, value) samples across a time window."""
+        url = f"{self.base_url}/api/v1/query_range"
+        params = {
+            "query": promql,
+            "start": start.timestamp(),
+            "end": end.timestamp(),
+            "step": step,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                payload: dict[str, Any] = response.json()
+        except Exception as exc:
+            logger.warning("prometheus_range_failed", extra={"error": str(exc), "query": promql})
+            return []
+
+        if payload.get("status") != "success":
+            return []
+
+        result = payload.get("data", {}).get("result", [])
+        if not result:
+            return []
+
+        values = result[0].get("values", [])
+        samples: list[tuple[float, float]] = []
+        for pair in values:
+            try:
+                samples.append((float(pair[0]), float(pair[1])))
+            except (TypeError, ValueError, IndexError):
+                continue
+        return samples
+
+    @staticmethod
+    def peak_in_window(samples: list[tuple[float, float]]) -> Optional[float]:
+        if not samples:
+            return None
+        return max(v for _, v in samples)
+
+    @staticmethod
+    def last_in_window(samples: list[tuple[float, float]]) -> Optional[float]:
+        if not samples:
+            return None
+        return samples[-1][1]
+
     async def snapshot(self, metric_names: list[str]) -> dict[str, float]:
         values: dict[str, float] = {}
         for name in metric_names:
-            promql = METRIC_QUERIES.get(name, METRIC_QUERIES["error_rate"])
+            promql = promql_for_metric(name)
             result = await self.query(promql)
             if result is not None:
                 values[name] = result

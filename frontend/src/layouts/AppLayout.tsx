@@ -1,30 +1,25 @@
 import { Outlet } from 'react-router-dom'
 import { useEffect } from 'react'
-import { getHealth } from '@/api/client'
+import { useHealth } from '@/hooks/useHealth'
 import { useAppStore } from '@/store/appStore'
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 
 export function AppLayout() {
   const setApiHealthy = useAppStore((s) => s.setApiHealthy)
+  const { isError, isSuccess } = useHealth()
 
   useEffect(() => {
-    const check = () => {
-      void getHealth()
-        .then(() => setApiHealthy(true))
-        .catch(() => setApiHealthy(false))
-    }
-    check()
-    const id = setInterval(check, 15000)
-    return () => clearInterval(id)
-  }, [setApiHealthy])
+    if (isSuccess) setApiHealthy(true)
+    if (isError) setApiHealthy(false)
+  }, [isError, isSuccess, setApiHealthy])
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="app-canvas flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto px-6 py-6">
           <Outlet />
         </main>
       </div>

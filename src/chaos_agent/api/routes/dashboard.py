@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from chaos_agent.api import mock_data
+from chaos_agent.red_blue import campaign as rb
 from chaos_agent.models import ExperimentState
 from chaos_agent.posture.scanner import PostureScanner
 from chaos_agent.storage.database import get_session_factory
@@ -25,11 +25,14 @@ async def get_stats() -> dict:
             avg_score = round(sum(r.red_score or 0 for r in scored) / len(scored))
 
     posture = await PostureScanner().scan()
+    campaigns = await rb.list_campaigns()
+    active_campaign = next((c for c in campaigns if c.get("state") == "active"), None)
     return {
         "experiments_total": len(rows),
         "experiments_running": running,
         "avg_resilience_score": avg_score,
         "posture_gaps": len(posture["gaps"]),
-        "red_blue_campaigns": len(mock_data.list_campaigns()),
+        "red_blue_campaigns": len(campaigns),
+        "active_campaign": active_campaign,
         "last_experiment_at": rows[0].created_at.isoformat() if rows else None,
     }

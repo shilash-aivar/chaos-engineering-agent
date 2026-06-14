@@ -2,8 +2,11 @@
 
 import type {
   ChaosDnaProfile,
+  ChaosLoadPairing,
   IntegrationConfig,
   LoadTestScenario,
+  LoadTestType,
+  LoadTestTypeInfo,
   ProductFeature,
   RegressionSuite,
   RemediationFinding,
@@ -251,11 +254,223 @@ export const demoRegressionSuites: RegressionSuite[] = [
   { id: 'ci-pr-892', name: 'PR #892 payments-api', source: 'manual', tests: 3, passing: 2, last_run: '4h ago' },
 ]
 
-export const demoLoadTests: LoadTestScenario[] = [
-  { id: 'checkout-peak', name: 'Checkout peak traffic', target: 'checkout', vus: 120, duration: '5m', ramp: '30s', last_result: { rps: 840, p99_ms: 420, errors_pct: 0.1 } },
-  { id: 'payments-stress', name: 'Payments stress', target: 'payments-api', vus: 80, duration: '3m', ramp: '15s', last_result: { rps: 520, p99_ms: 890, errors_pct: 2.4 } },
-  { id: 'inventory-spike', name: 'Inventory flash sale', target: 'inventory-api', vus: 200, duration: '2m', ramp: '10s' },
+export const loadTestTypes: LoadTestTypeInfo[] = [
+  {
+    type: 'load',
+    title: 'Load test',
+    question: 'Does it handle expected peak traffic?',
+    description: 'Sustain realistic concurrent users at production-like volume. Validates SLOs under normal high traffic.',
+    when_to_use: 'Before launches, after scaling changes, baseline regression',
+    typical_duration: '5–15 min',
+    chaos_pairing: 'Run steady load while injecting latency or partial outages',
+  },
+  {
+    type: 'stress',
+    title: 'Stress test',
+    question: 'Where does it break?',
+    description: 'Ramp VUs beyond expected capacity until errors or latency cliff. Finds the breaking point and degradation curve.',
+    when_to_use: 'Capacity planning, autoscaling validation, Red agent attacks',
+    typical_duration: '10–20 min (ramp to failure)',
+    chaos_pairing: 'Increase load until fault triggers cascade — measures blast under pressure',
+  },
+  {
+    type: 'performance',
+    title: 'Performance test',
+    question: 'How fast is it under light load?',
+    description: 'Low concurrency focused on latency percentiles (p50, p95, p99) and throughput — not max capacity.',
+    when_to_use: 'After code changes, dependency upgrades, mesh config tweaks',
+    typical_duration: '3–5 min',
+    chaos_pairing: 'Baseline perf first, then re-run with fault to measure regression',
+  },
+  {
+    type: 'soak',
+    title: 'Soak test',
+    question: 'Does it survive over time?',
+    description: 'Moderate load for extended duration. Surfaces memory leaks, connection pool exhaustion, queue backlog growth.',
+    when_to_use: 'Nightly staging, pre game-day, after pool/timeout config changes',
+    typical_duration: '1–4 hours',
+    chaos_pairing: 'Long-running load + intermittent faults (pod kill, network blips)',
+  },
 ]
+
+export const demoLoadTests: LoadTestScenario[] = [
+  {
+    id: 'checkout-peak',
+    name: 'Checkout peak traffic',
+    type: 'load',
+    target: 'checkout',
+    vus: 120,
+    duration: '5m',
+    ramp: '30s',
+    goal: 'Sustain Black Friday peak — error rate < 0.5%, p99 < 500ms',
+    stages: [
+      { duration: '30s', target: 120 },
+      { duration: '5m', target: 120 },
+      { duration: '30s', target: 0 },
+    ],
+    paired_fault: 'network_latency on payments-api',
+    last_result: { rps: 840, p50_ms: 85, p99_ms: 420, errors_pct: 0.1 },
+  },
+  {
+    id: 'payments-stress',
+    name: 'Payments breaking point',
+    type: 'stress',
+    target: 'payments-api',
+    vus: 200,
+    duration: '12m',
+    ramp: '2m',
+    goal: 'Find VU count where p99 exceeds 2s or errors > 1%',
+    stages: [
+      { duration: '2m', target: 40 },
+      { duration: '2m', target: 80 },
+      { duration: '2m', target: 120 },
+      { duration: '2m', target: 160 },
+      { duration: '2m', target: 200 },
+      { duration: '2m', target: 0 },
+    ],
+    paired_fault: 'dependency_blackhole on payments-db',
+    last_result: { rps: 520, p50_ms: 310, p99_ms: 1840, errors_pct: 4.6, breaking_point_vus: 140 },
+  },
+  {
+    id: 'checkout-perf',
+    name: 'Checkout latency baseline',
+    type: 'performance',
+    target: 'checkout',
+    vus: 20,
+    duration: '3m',
+    ramp: '10s',
+    goal: 'p50 < 80ms, p99 < 250ms at 20 VUs',
+    stages: [
+      { duration: '10s', target: 20 },
+      { duration: '3m', target: 20 },
+      { duration: '10s', target: 0 },
+    ],
+    last_result: { rps: 180, p50_ms: 62, p99_ms: 198, errors_pct: 0 },
+  },
+  {
+    id: 'inventory-soak',
+    name: 'Inventory overnight soak',
+    type: 'soak',
+    target: 'inventory-api',
+    vus: 60,
+    duration: '2h',
+    ramp: '5m',
+    goal: 'Stable memory, no connection growth, SQS age < 30s over 2h',
+    stages: [
+      { duration: '5m', target: 60 },
+      { duration: '2h', target: 60 },
+      { duration: '5m', target: 0 },
+    ],
+    paired_fault: 'pod_kill every 15m',
+  },
+  {
+    id: 'inventory-spike',
+    name: 'Inventory flash sale',
+    type: 'stress',
+    target: 'inventory-api',
+    vus: 200,
+    duration: '8m',
+    ramp: '1m',
+    goal: 'Spike to 200 VUs in 1m — measure recovery after spike',
+    stages: [
+      { duration: '1m', target: 200 },
+      { duration: '5m', target: 200 },
+      { duration: '2m', target: 0 },
+    ],
+  },
+]
+
+export const chaosLoadPairings: ChaosLoadPairing[] = [
+  {
+    id: 'db-blackhole-load',
+    name: 'DB blackhole under peak load',
+    load_type: 'load',
+    fault: 'toxiproxy dependency_blackhole → payments-db',
+    hypothesis: 'Checkout SLO breaches when DB unreachable at peak traffic',
+    recommended_vus: 120,
+  },
+  {
+    id: 'latency-stress',
+    name: 'Upstream latency + stress ramp',
+    load_type: 'stress',
+    fault: 'chaos_mesh network_latency 500ms → payments-api',
+    hypothesis: 'Breaking point drops when upstream is slow',
+    recommended_vus: 80,
+  },
+  {
+    id: 'perf-baseline-fault',
+    name: 'Performance regression with fault',
+    load_type: 'performance',
+    fault: 'toxiproxy timeout → stripe-api',
+    hypothesis: 'p99 doubles with 3rd-party timeout under light load',
+    recommended_vus: 20,
+  },
+  {
+    id: 'soak-pod-kill',
+    name: 'Soak + intermittent pod kill',
+    load_type: 'soak',
+    fault: 'chaos_mesh pod_kill every 15m',
+    hypothesis: 'Connection pools recover over long runs without leak',
+    recommended_vus: 60,
+  },
+]
+
+export const k6ScriptTemplates: Record<LoadTestType, string> = {
+  load: `// Load test — sustain expected peak
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  stages: [
+    { duration: '30s', target: 120 },
+    { duration: '5m', target: 120 },
+    { duration: '30s', target: 0 },
+  ],
+  thresholds: {
+    http_req_failed: ['rate<0.005'],
+    http_req_duration: ['p(99)<500'],
+  },
+};
+
+export default function () {
+  const res = http.get(__ENV.TARGET_URL + '/checkout');
+  check(res, { 'status 200': (r) => r.status === 200 });
+  sleep(0.3);
+}`,
+  stress: `// Stress test — ramp until failure
+export const options = {
+  stages: [
+    { duration: '2m', target: 40 },
+    { duration: '2m', target: 80 },
+    { duration: '2m', target: 120 },
+    { duration: '2m', target: 160 },
+    { duration: '2m', target: 200 },
+    { duration: '2m', target: 0 },
+  ],
+  thresholds: {
+    http_req_duration: ['p(99)<2000'], // abort stage when breached
+  },
+};`,
+  performance: `// Performance test — latency-focused, low VUs
+export const options = {
+  vus: 20,
+  duration: '3m',
+  thresholds: {
+    http_req_duration: ['p(50)<80', 'p(99)<250'],
+  },
+};`,
+  soak: `// Soak test — moderate load, long duration
+export const options = {
+  stages: [
+    { duration: '5m', target: 60 },
+    { duration: '2h', target: 60 },
+    { duration: '5m', target: 0 },
+  ],
+  thresholds: {
+    http_req_failed: ['rate<0.01'],
+  },
+};`,
+}
 
 export const demoObservabilityLinks = [
   { label: 'Experiment dashboard', url: 'grafana/d/chaos-exp/checkout-payments', type: 'grafana' },
@@ -279,14 +494,15 @@ export const productFeatures: ProductFeature[] = [
   { id: 'twin', name: 'Digital twin', description: 'Blast radius simulation before inject', phase: 2, status: 'preview', path: '/infrastructure', icon: 'layers' },
   { id: 'remediation', name: 'LLM remediation', description: 'Findings → tickets, PRs, runbooks', phase: 2, status: 'preview', path: '/remediation', icon: 'wrench' },
   { id: 'posture', name: 'Posture scanner', description: '5-ring gap detection + bootstrap fixes', phase: 2, status: 'live', path: '/posture', icon: 'shield' },
-  { id: 'redblue', name: 'Red vs Blue', description: 'Adversarial agents with objective scoring', phase: 3, status: 'preview', path: '/red-blue', icon: 'swords' },
+      { id: 'redblue', name: 'Red vs Blue', description: 'Adversarial agents — optional security attacks + Blue defense', phase: 3, status: 'live', path: '/red-blue', icon: 'swords' },
   { id: 'cigate', name: 'CI resilience gate', description: 'PR-scoped faults + regression comment', phase: 3, status: 'preview', path: '/ci-gate', icon: 'git' },
   { id: 'awsfis', name: 'AWS FIS executor', description: 'AZ impairment, RDS failover experiments', phase: 3, status: 'planned', path: '/policies', icon: 'cloud' },
   { id: 'chaosdna', name: 'Chaos DNA', description: 'Per-service resilience profiles over time', phase: 4, status: 'preview', path: '/chaos-dna', icon: 'dna' },
   { id: 'policies', name: 'Safety policies', description: 'Blast caps, freeze windows, approvals', phase: 1, status: 'preview', path: '/policies', icon: 'lock' },
+  { id: 'referee', name: 'Referee', description: 'Scoring rules, freeze calendar, round orchestration', phase: 3, status: 'preview', path: '/referee', icon: 'scale' },
   { id: 'integrations', name: 'Integrations', description: 'Slack, GitHub, PagerDuty, Grafana, Tempo', phase: 2, status: 'preview', path: '/integrations', icon: 'plug' },
   { id: 'observability', name: 'Observability', description: 'Steady-state guard, live metrics, traces', phase: 1, status: 'preview', path: '/observability', icon: 'activity' },
-  { id: 'load', name: 'Load testing', description: 'k6 scenarios paired with fault injection', phase: 2, status: 'preview', path: '/load-testing', icon: 'gauge' },
+  { id: 'load', name: 'Performance testing', description: 'Load, stress, performance, soak — paired with faults', phase: 2, status: 'preview', path: '/load-testing', icon: 'gauge' },
 ]
 
 export const roadmapPhases: RoadmapPhase[] = [
@@ -299,7 +515,7 @@ export const roadmapPhases: RoadmapPhase[] = [
       { name: 'Experiment state machine', status: 'live', path: '/experiments' },
       { name: 'Auto-rollback + TTL safety net', status: 'live', path: '/policies' },
       { name: 'Steady-state guard', status: 'preview', path: '/observability' },
-      { name: 'Safety validator', status: 'preview', path: '/policies' },
+      { name: 'Safety validator', status: 'preview', path: '/referee' },
     ],
   },
   {
@@ -313,7 +529,7 @@ export const roadmapPhases: RoadmapPhase[] = [
       { name: 'Digital twin blast simulation', status: 'preview', path: '/infrastructure' },
       { name: 'LLM remediation pipeline', status: 'preview', path: '/remediation' },
       { name: 'Posture bootstrap (Istio, PriorityClass)', status: 'preview', path: '/posture' },
-      { name: 'k6 load pairing', status: 'preview', path: '/load-testing' },
+      { name: 'Performance tests (load/stress/soak)', status: 'preview', path: '/load-testing' },
       { name: 'Slack + GitHub integrations', status: 'preview', path: '/integrations' },
     ],
   },
@@ -326,6 +542,7 @@ export const roadmapPhases: RoadmapPhase[] = [
       { name: 'Red agent (break maximizer)', status: 'preview', path: '/red-blue' },
       { name: 'CI resilience gate on PRs', status: 'preview', path: '/ci-gate' },
       { name: 'AWS FIS executor', status: 'planned', path: '/policies' },
+      { name: 'Referee scoring + freeze calendar', status: 'preview', path: '/referee' },
       { name: 'Regression suite export', status: 'preview', path: '/ci-gate' },
     ],
   },
@@ -353,4 +570,83 @@ export const roadmapPhases: RoadmapPhase[] = [
       { name: 'Game-day automation', status: 'planned', path: '/red-blue' },
     ],
   },
+]
+
+export const demoPolicyYaml = `# Resilience posture policy — K8s + AWS rules the agent enforces.
+
+priority_tiers:
+  critical:
+    value: 1000000
+    match:
+      labels:
+        tier: critical
+  standard:
+    value: 100000
+    default: true
+
+rules:
+  - id: critical-pods-priority-class
+    scope: k8s
+    severity: high
+    when:
+      labels:
+        tier: critical
+    require:
+      priority_class: chaos-critical
+
+  - id: critical-rds-multi-az
+    scope: aws
+    severity: critical
+    when:
+      tags:
+        tier: critical
+      service: rds
+    require:
+      multi_az: true
+
+  - id: app-circuit-breaker
+    scope: app
+    severity: high
+    when:
+      labels:
+        tier: critical
+    require:
+      circuit_breaker: true
+
+  - id: deps-third-party-timeout
+    scope: deps
+    severity: high
+    when:
+      third_party: true
+    require:
+      client_timeout_seconds: 5
+
+bootstrap:
+  istio:
+    mode: prompt_install
+    allowed_environments: [development, staging]
+  priority_class:
+    auto_create_staging: true`
+
+export const demoRefereeScoring = [
+  { metric: 'Time to SLO breach', weight: 30, red: 'Faster = higher Red score', blue: 'Slower = higher Blue score' },
+  { metric: 'Blast radius contained', weight: 25, red: 'Wider cascade = Red wins', blue: 'Contained = Blue wins' },
+  { metric: 'Recovery time', weight: 25, red: 'Slow recovery = Red wins', blue: 'Fast rollback = Blue wins' },
+  { metric: 'Remediation landed', weight: 20, red: 'No fix opened = Red wins', blue: 'PR/issue opened = Blue wins' },
+]
+
+export const demoFreezeWindows = [
+  { label: 'Weekly change freeze', schedule: 'Fri 16:00 → Mon 08:00 UTC', enforced: false, next: 'Fri Jun 20' },
+  { label: 'Holiday blackout', schedule: 'Dec 20 → Jan 5', enforced: true, next: 'Dec 20' },
+  { label: 'Launch freeze (checkout)', schedule: 'Jun 15–Jun 22', enforced: true, next: 'Active now' },
+]
+
+export const demoPolicyRules = [
+  { id: 'critical-pods-priority-class', scope: 'k8s', severity: 'high', summary: 'critical tier → chaos-critical PriorityClass' },
+  { id: 'critical-deployment-probes', scope: 'k8s', severity: 'high', summary: 'critical tier → readiness + liveness probes' },
+  { id: 'critical-rds-multi-az', scope: 'aws', severity: 'critical', summary: 'critical RDS → multi_az=true' },
+  { id: 'critical-sqs-dlq', scope: 'aws', severity: 'high', summary: 'critical SQS → dead letter queue' },
+  { id: 'app-circuit-breaker', scope: 'app', severity: 'high', summary: 'critical apps → circuit breaker required' },
+  { id: 'deps-third-party-timeout', scope: 'deps', severity: 'high', summary: '3rd party deps → 5s client timeout' },
+  { id: 'obs-trace-coverage', scope: 'observability', severity: 'high', summary: 'critical paths → traced in Tempo' },
 ]

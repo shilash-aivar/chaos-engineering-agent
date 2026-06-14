@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AlertTriangle, Cloud, Database, GitBranch, Loader2, RefreshCw, Server } from 'lucide-react'
 import { demoBootstrapActions } from '@/demo/mockData'
-import { getSnapshot, scanPosture } from '@/api/client'
-import type { InfraSnapshot, PostureGap } from '@/types'
-import { useAppStore } from '@/store/appStore'
-import { PhaseBadge } from '@/components/shared/PreviewBanner'
+import { usePostureScan } from '@/hooks/usePosture'
+import { PageHeader, PageShell, StatCard } from '@/components/layout/PageChrome'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import type { PostureGap } from '@/types'
 
 const severityVariant = {
   critical: 'destructive',
@@ -20,85 +19,84 @@ const scopeConfig: {
   key: PostureGap['scope']
   title: string
   description: string
+  icon: typeof Server
+  accent: 'amber' | 'teal' | 'rose' | 'sky' | 'neutral'
 }[] = [
-  { key: 'k8s', title: 'Kubernetes', description: 'Pods, probes, PriorityClass, mesh' },
-  { key: 'aws', title: 'AWS', description: 'RDS, ALB, SQS, ElastiCache' },
-  { key: 'app', title: 'Application', description: 'Retries, circuit breakers, feature flags' },
-  { key: 'deps', title: 'Dependencies', description: 'Postgres, Redis, Kafka, Stripe, Auth0' },
-  { key: 'observability', title: 'Observability', description: 'Prometheus, Grafana, Tempo, PagerDuty, GitHub' },
+  { key: 'k8s', title: 'Kubernetes', description: 'Pods, probes, PriorityClass, mesh', icon: Server, accent: 'sky' },
+  { key: 'aws', title: 'AWS', description: 'RDS, ALB, SQS, ElastiCache', icon: Cloud, accent: 'amber' },
+  { key: 'app', title: 'Application', description: 'Retries, circuit breakers, feature flags', icon: GitBranch, accent: 'teal' },
+  { key: 'deps', title: 'Dependencies', description: 'Postgres, Redis, Kafka, Stripe, Auth0', icon: Database, accent: 'rose' },
+  { key: 'observability', title: 'Observability', description: 'Prometheus, Grafana, Tempo, PagerDuty', icon: AlertTriangle, accent: 'neutral' },
 ]
 
 export function PosturePage() {
-  const setPostureGaps = useAppStore((s) => s.setPostureGaps)
-  const [gaps, setGaps] = useState<PostureGap[]>([])
-  const [summary, setSummary] = useState<Record<string, number>>({})
-  const [snapshot, setSnapshot] = useState<InfraSnapshot | null>(null)
-  const [scannedAt, setScannedAt] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { posture, snapshot, refetchAll, isLoading, isRefetching } = usePostureScan()
+  const gaps = posture.data?.gaps ?? []
+  const summary = posture.data?.summary
+  const snap = snapshot.data
 
-  const refresh = () => {
-    setLoading(true)
-    void Promise.all([scanPosture(), getSnapshot()])
-      .then(([posture, snap]) => {
-        setGaps(posture.gaps)
-        setSummary(posture.summary ?? {})
-        setPostureGaps(posture.gaps)
-        setScannedAt(posture.scanned_at)
-        setSnapshot(snap)
-      })
-      .finally(() => setLoading(false))
+  if (isLoading) {
+    return (
+      <PageShell>
+        <Skeleton className="h-24 rounded-lg" />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="mt-6 h-96 rounded-lg" />
+      </PageShell>
+    )
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {scannedAt ? `Last scan: ${new Date(scannedAt).toLocaleString()}` : 'Not scanned'}
-          </p>
-          {snapshot && (
-            <p className="text-xs text-muted-foreground">
-              Snapshot: {snapshot.applications.length} apps · {snapshot.dependencies.length} deps ·{' '}
-              {snapshot.observability.length} observability targets
-            </p>
-          )}
-        </div>
-        <Button variant="outline" onClick={refresh} disabled={loading}>
-          {loading ? 'Scanning…' : 'Re-scan'}
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Resilience posture"
+        description="Cross-scope gap scan across Kubernetes, AWS, application code, dependencies, and observability."
+        action={
+          <Button variant="outline" onClick={() => void refetchAll()} disabled={isRefetching}>
+            {isRefetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Re-scan
+          </Button>
+        }
+        badge={
+          posture.data?.scanned_at ? (
+            <Badge variant="outline" className="font-mono text-[10px]">
+              {new Date(posture.data.scanned_at).toLocaleString()}
+            </Badge>
+          ) : undefined
+        }
+      />
 
-      {snapshot && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Dependency graph</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {snapshot.graph_edges.map((e, i) => (
-                <Badge key={i} variant="outline" className="font-mono text-[10px]">
-                  {e.from} → {e.to}
-                  <span className="ml-1 text-muted-foreground">({e.type})</span>
-                </Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {snap && (
+        <section className="surface-card mb-6 rounded-lg p-5">
+          <h2 className="text-sm font-semibold">Infrastructure snapshot</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {snap.applications.length} apps · {snap.dependencies.length} deps · {snap.observability.length}{' '}
+            observability targets
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {snap.graph_edges.map((e, i) => (
+              <Badge key={i} variant="outline" className="font-mono text-[10px]">
+                {e.from} → {e.to}
+                <span className="ml-1 text-muted-foreground">({e.type})</span>
+              </Badge>
+            ))}
+          </div>
+        </section>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {scopeConfig.map(({ key, title }) => (
-          <Card key={key}>
-            <CardContent className="p-4">
-              <p className="text-[10px] uppercase text-muted-foreground">{title}</p>
-              <p className="text-2xl font-bold">{summary[key] ?? gaps.filter((g) => g.scope === key).length}</p>
-              <p className="text-[10px] text-muted-foreground">gaps</p>
-            </CardContent>
-          </Card>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {scopeConfig.map(({ key, title, icon, accent }) => (
+          <StatCard
+            key={key}
+            icon={icon}
+            label={title}
+            value={summary?.[key] ?? gaps.filter((g) => g.scope === key).length}
+            hint="gaps"
+            accent={accent}
+          />
         ))}
       </div>
 
@@ -106,17 +104,17 @@ export function PosturePage() {
         {scopeConfig.map(({ key, title, description }) => {
           const items = gaps.filter((g) => g.scope === key)
           return (
-            <Card key={key}>
-              <CardHeader>
-                <CardTitle>{title}</CardTitle>
+            <section key={key} className="surface-card rounded-lg">
+              <div className="border-b border-border px-5 py-4">
+                <h3 className="text-sm font-semibold">{title}</h3>
                 <p className="text-xs text-muted-foreground">{description}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
+              </div>
+              <div className="divide-y divide-border">
                 {items.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No gaps detected</p>
+                  <p className="px-5 py-6 text-sm text-muted-foreground">No gaps detected</p>
                 ) : (
                   items.map((gap) => (
-                    <div key={gap.id} className="rounded-md border border-border p-4">
+                    <div key={gap.id} className="px-5 py-4">
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-medium">{gap.service}</p>
                         <Badge variant={severityVariant[gap.severity]}>{gap.severity}</Badge>
@@ -127,27 +125,29 @@ export function PosturePage() {
                     </div>
                   ))
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           )
         })}
       </div>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
+      <section className="surface-card mt-6 rounded-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div>
-            <CardTitle className="text-sm">Bootstrap actions</CardTitle>
+            <h3 className="text-sm font-semibold">Bootstrap actions</h3>
             <p className="text-xs text-muted-foreground">
               Agent can install Istio, create PriorityClass, open Terraform PRs — with approval
             </p>
           </div>
-          <PhaseBadge status="preview" phase={2} />
-        </CardHeader>
-        <CardContent className="space-y-2">
+          <Badge variant="outline" className="text-[10px]">
+            Phase 2 preview
+          </Badge>
+        </div>
+        <div className="divide-y divide-border">
           {demoBootstrapActions.map((action) => (
             <div
               key={action.action}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"
             >
               <div>
                 <p className="text-sm font-medium">{action.action}</p>
@@ -172,15 +172,15 @@ export function PosturePage() {
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <p className="text-center text-xs text-muted-foreground">
+      <p className="mt-6 text-center text-xs text-muted-foreground">
         Full infrastructure rings:{' '}
         <Link to="/infrastructure" className="text-primary hover:underline">
           Infrastructure page
         </Link>
       </p>
-    </div>
+    </PageShell>
   )
 }

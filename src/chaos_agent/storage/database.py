@@ -38,9 +38,22 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 async def init_db() -> None:
     from chaos_agent.storage import orm  # noqa: F401
 
+    import sqlalchemy as sa
+
     engine = get_engine()
+
+    def _migrate(connection) -> None:
+        inspector = sa.inspect(connection)
+        if inspector.has_table("experiments"):
+            columns = {col["name"] for col in inspector.get_columns("experiments")}
+            if "evidence_json" not in columns:
+                connection.execute(sa.text("ALTER TABLE experiments ADD COLUMN evidence_json TEXT"))
+            if "findings_json" not in columns:
+                connection.execute(sa.text("ALTER TABLE experiments ADD COLUMN findings_json TEXT"))
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

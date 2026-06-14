@@ -1,85 +1,97 @@
-import { demoMetrics, demoObservabilityLinks } from '@/demo/mockData'
-import { DemoLiveMetrics } from '@/components/demo/DemoLiveMetrics'
-import { PreviewBanner, PhaseBadge } from '@/components/shared/PreviewBanner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Link } from 'react-router-dom'
+import { useExperiments } from '@/hooks/useExperiments'
+import { useObservabilityCatalog, useObservabilityStatus } from '@/hooks/useObservability'
+import { BackendStatusGrid } from '@/components/observability/BackendStatusGrid'
+import { PageHeader, PageShell } from '@/components/layout/PageChrome'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function ObservabilityPage() {
+  const { data: status, isLoading: statusLoading } = useObservabilityStatus()
+  const { data: catalog } = useObservabilityCatalog()
+  const { data: experiments } = useExperiments()
+
+  const catalogServices = catalog ? Object.keys(catalog.services) : []
+  const recentComplete = (experiments ?? []).filter((e) => e.state === 'complete').slice(0, 5)
+
   return (
-    <div className="space-y-6">
-      <PreviewBanner
-        phase={1}
-        liveHint="Prometheus guard runs server-side — this page will show live charts during experiments."
+    <PageShell>
+      <PageHeader
+        title="Observability"
+        description="Prometheus guard, Loki log correlation, and Tempo trace search — summarized into fault-window evidence per run."
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DemoLiveMetrics />
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Steady-state guard</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Baseline capture → periodic check → auto-abort on breach
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Abort thresholds</p>
-              <p className="mt-1">Error rate &gt; 2× baseline</p>
-              <p>Latency &gt; 3× baseline</p>
-            </div>
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
-              <p className="text-xs text-destructive">Last breach</p>
-              <p className="font-medium">checkout error_rate 0.08% → 4.6%</p>
-              <p className="text-xs text-muted-foreground">Rollback triggered at 14:04:02</p>
-            </div>
-            <PhaseBadge status="preview" phase={1} />
-          </CardContent>
-        </Card>
-      </div>
+      {statusLoading ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+      ) : (
+        <BackendStatusGrid status={status} />
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Watch metrics</CardTitle>
-          <p className="text-xs text-muted-foreground">Configured per experiment plan — polled during run</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {demoMetrics.map((m) => (
-              <div key={m.label} className="rounded-md border border-border p-3">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">{m.label}</span>
-                  <Badge variant={m.current > m.threshold ? 'destructive' : 'success'}>
-                    {m.current}{m.unit}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  baseline {m.baseline}{m.unit} · threshold {m.threshold}{m.unit}
-                </p>
-              </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <section className="surface-card rounded-lg p-5">
+          <h2 className="text-sm font-semibold">Steady-state guard</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Baseline window → 15s evaluation → auto-abort on breach
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-border bg-card/40 px-3 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Error rate
+              </p>
+              <p className="mt-1 text-sm">Abort if &gt; 2× baseline</p>
+            </div>
+            <div className="rounded-md border border-border bg-card/40 px-3 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Latency p99
+              </p>
+              <p className="mt-1 text-sm">Abort if &gt; 3× baseline</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="surface-card rounded-lg p-5">
+          <h2 className="text-sm font-semibold">Service catalog</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Default metrics and log selectors per service
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {catalogServices.map((svc) => (
+              <Badge key={svc} variant="outline" className="font-mono text-[10px]">
+                {svc}
+              </Badge>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </section>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Deep links</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {demoObservabilityLinks.map((link) => (
-            <div key={link.label} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <div>
-                <p className="text-sm">{link.label}</p>
-                <p className="font-mono text-[10px] text-muted-foreground">{link.url}</p>
-              </div>
-              <Button variant="ghost" size="sm" disabled>
-                Open
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+      <section className="surface-card mt-6 rounded-lg">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold">Runs with evidence</h2>
+        </div>
+        <div className="divide-y divide-border">
+          {recentComplete.length === 0 ? (
+            <p className="px-5 py-8 text-sm text-muted-foreground">No completed experiments yet.</p>
+          ) : (
+            recentComplete.map((exp) => (
+              <Link
+                key={exp.id}
+                to={`/experiments/${exp.id}`}
+                className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-accent/50"
+              >
+                <div>
+                  <p className="text-sm font-medium">{exp.name}</p>
+                  <p className="text-xs text-muted-foreground">{exp.namespace}</p>
+                </div>
+                <Badge variant="outline">Evidence</Badge>
+              </Link>
+            ))
+          )}
+        </div>
+      </section>
+    </PageShell>
   )
 }

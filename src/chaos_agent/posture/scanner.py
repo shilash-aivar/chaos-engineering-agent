@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Literal
 
 from chaos_agent.graph.snapshot import SnapshotBuilder
@@ -9,15 +10,23 @@ from chaos_agent.graph.types import InfraSnapshot
 
 PostureScope = Literal["k8s", "aws", "app", "deps", "observability"]
 
+_SCAN_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CACHE_TTL_SECONDS = 60
+
 
 class PostureScanner:
     def __init__(self, namespace: str = "staging") -> None:
         self.builder = SnapshotBuilder(namespace)
 
     async def scan(self) -> dict[str, Any]:
+        cache_key = self.builder.namespace
+        cached = _SCAN_CACHE.get(cache_key)
+        if cached and (time.monotonic() - cached[0]) < _CACHE_TTL_SECONDS:
+            return cached[1]
+
         snapshot = await self.builder.build()
         gaps = self._evaluate(snapshot)
-        return {
+        result = {
             "gaps": gaps,
             "scanned_at": snapshot.captured_at.isoformat(),
             "summary": {
@@ -28,6 +37,8 @@ class PostureScanner:
                 "observability": sum(1 for g in gaps if g["scope"] == "observability"),
             },
         }
+        _SCAN_CACHE[cache_key] = (time.monotonic(), result)
+        return result
 
     def _evaluate(self, snapshot: InfraSnapshot) -> list[dict[str, Any]]:
         gaps: list[dict[str, Any]] = []

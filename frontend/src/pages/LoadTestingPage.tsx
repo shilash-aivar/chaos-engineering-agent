@@ -1,97 +1,118 @@
-import { demoLoadTests } from '@/demo/mockData'
-import { PreviewBanner, PhaseBadge } from '@/components/shared/PreviewBanner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { PageHeader, PageShell } from '@/components/layout/PageChrome'
+import { useLoadTests } from '@/hooks/usePlatform'
+import { LoadScenarioCard } from '@/components/load/LoadScenarioCard'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import type { LoadTestType } from '@/types'
 
 export function LoadTestingPage() {
+  const { data, isLoading } = useLoadTests()
+  const [filter, setFilter] = useState<LoadTestType | 'all'>('all')
+  const [scriptType, setScriptType] = useState<LoadTestType>('load')
+
+  if (isLoading) {
+    return (
+      <PageShell>
+        <Skeleton className="h-96 rounded-lg" />
+      </PageShell>
+    )
+  }
+
+  const scenarios = (data?.scenarios ?? []) as Array<{
+    id: string
+    name: string
+    type: LoadTestType
+    vus: number
+    duration: string
+    target: string
+    status: string
+    hypothesis: string
+  }>
+  const filtered = filter === 'all' ? scenarios : scenarios.filter((s) => s.type === filter)
+
   return (
-    <div className="space-y-6">
-      <PreviewBanner phase={2} liveHint="k6 executor will pair load with fault injection in the same experiment plan." />
+    <PageShell>
+      <PageHeader
+        title="Performance testing"
+        description="k6 load, stress, performance, and soak profiles paired with chaos faults."
+      />
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-sm">k6 scenarios</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Load runs in parallel with Chaos Mesh / Toxiproxy faults
-            </p>
-          </div>
-          <Button size="sm" disabled>
-            New scenario
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {demoLoadTests.map((scenario) => (
-            <div key={scenario.id} className="rounded-md border border-border p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium">{scenario.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    target={scenario.target} · {scenario.vus} VUs · {scenario.duration} · ramp {scenario.ramp}
-                  </p>
-                </div>
-                <Badge variant="outline">k6</Badge>
+      <Tabs defaultValue="types">
+        <TabsList className="flex h-auto flex-wrap gap-1">
+          <TabsTrigger value="types">Test types</TabsTrigger>
+          <TabsTrigger value="scenarios">Scenario library</TabsTrigger>
+          <TabsTrigger value="pairing">Chaos + load</TabsTrigger>
+          <TabsTrigger value="scripts">k6 templates</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="types" className="grid gap-4 md:grid-cols-2">
+          {(data?.types ?? []).map((info) => (
+            <section key={info.type} className="surface-card rounded-lg p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">{info.title}</h2>
+                <Badge variant="outline">{info.type}</Badge>
               </div>
-              {scenario.last_result ? (
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="rounded border border-border p-2">
-                    <p className="text-muted-foreground">RPS</p>
-                    <p className="font-bold">{scenario.last_result.rps}</p>
-                  </div>
-                  <div className="rounded border border-border p-2">
-                    <p className="text-muted-foreground">p99</p>
-                    <p className="font-bold">{scenario.last_result.p99_ms}ms</p>
-                  </div>
-                  <div className="rounded border border-border p-2">
-                    <p className="text-muted-foreground">Errors</p>
-                    <p className={`font-bold ${scenario.last_result.errors_pct > 1 ? 'text-destructive' : ''}`}>
-                      {scenario.last_result.errors_pct}%
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-muted-foreground">Not run yet</p>
-              )}
-              <div className="mt-3 flex gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  Edit script
-                </Button>
-                <Button variant="outline" size="sm" disabled>
-                  Pair with experiment
-                </Button>
-              </div>
-            </div>
+              <p className="mt-1 text-xs font-medium text-primary">{info.question}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{info.description}</p>
+            </section>
           ))}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Example k6 script snippet</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="overflow-auto rounded-md border border-border bg-muted p-4 text-xs">{`import http from 'k6/http';
-import { check } from 'k6';
-
-export const options = {
-  stages: [
-    { duration: '30s', target: 120 },
-    { duration: '5m', target: 120 },
-    { duration: '30s', target: 0 },
-  ],
-};
-
-export default function () {
-  const res = http.get('https://checkout.staging/health');
-  check(res, { 'status is 200': (r) => r.status === 200 });
-}`}</pre>
-          <div className="mt-3 flex items-center gap-2">
-            <PhaseBadge status="preview" phase={2} />
-            <span className="text-xs text-muted-foreground">Executor applies script via k6 Job in experiment namespace</span>
+        <TabsContent value="scenarios" className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'load', 'stress', 'performance', 'soak'] as const).map((t) => (
+              <Button key={t} variant={filter === t ? 'default' : 'outline'} size="sm" onClick={() => setFilter(t)}>
+                {t}
+              </Button>
+            ))}
+            <Button size="sm" className="ml-auto" asChild>
+              <Link to="/new">Use in experiment</Link>
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+          <div className="space-y-3">
+            {filtered.map((scenario) => (
+              <LoadScenarioCard key={scenario.id} scenario={scenario} />
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pairing">
+          <section className="surface-card rounded-lg">
+            <div className="divide-y divide-border">
+              {(data?.pairings ?? []).map((pair) => (
+                <div key={String(pair.id)} className="px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium">{String(pair.name)}</p>
+                    <Badge variant="outline">{String(pair.load_type)}</Badge>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">{String(pair.hypothesis)}</p>
+                  <p className="mt-2 text-xs text-red-team">{String(pair.fault)}</p>
+                  <Button variant="outline" size="sm" className="mt-3" asChild>
+                    <Link to="/new">Compose experiment</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="scripts">
+          <div className="mb-4 flex flex-wrap gap-2">
+            {(['load', 'stress', 'performance', 'soak'] as LoadTestType[]).map((t) => (
+              <Button key={t} variant={scriptType === t ? 'default' : 'outline'} size="sm" onClick={() => setScriptType(t)}>
+                {t}
+              </Button>
+            ))}
+          </div>
+          <pre className="surface-card overflow-auto rounded-lg p-5 font-mono text-xs">
+            {data?.templates?.[scriptType] ?? ''}
+          </pre>
+        </TabsContent>
+      </Tabs>
+    </PageShell>
   )
 }

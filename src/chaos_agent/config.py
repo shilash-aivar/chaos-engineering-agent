@@ -19,18 +19,33 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-20250514"
+    llm_enabled: bool = True
+    auto_remediate_on_complete: bool = True
+    inject_red_blue_faults: bool = True
+    enforce_freeze_calendar: bool = False
+    require_approval_production: bool = True
+    aws_fis_enabled: bool = False
+    auto_verify_remediation: bool = False
+    slack_bot_token: str = ""
+    slack_webhook_url: str = ""
+    slack_approval_channel: str = "#chaos-agent-approvals"
+    api_public_url: str = "http://127.0.0.1:8000"
     default_namespace: str = "staging"
     allow_prod: bool = False
     max_replica_percent: int = 30
 
     prometheus_url: str = "http://localhost:9090"
     grafana_url: str = "http://localhost:3000"
+    loki_url: str = "http://localhost:3100"
     tempo_url: str = "http://localhost:3200"
     toxiproxy_url: str = "http://localhost:8474"
     pagerduty_api_key: str = ""
     github_token: str = ""
     github_org: str = ""
     github_repo: str = ""
+    github_default_branch: str = "main"
+    staging_base_url: str = "http://localhost:8080"
     simulate_execution: bool = False
 
     baseline_capture_seconds: int = 60

@@ -1,0 +1,1 @@
+"""Loki log collector."""

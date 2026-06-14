@@ -6,7 +6,7 @@ React dashboard for the internal Chaos Engineering Agent. Most features ship as 
 
 ### Operate (live)
 - **Dashboard** (`/`) — stats, feature catalog, recent experiments
-- **Experiments** (`/experiments`) — list and detail with timeline + abort
+- **Experiments** (`/experiments`) — list and detail with tabs: overview, metrics, findings, approval panel
 - **New experiment** (`/new`) — natural language → LLM plan → approve & run
 
 ### Intelligence (preview)
@@ -18,10 +18,11 @@ React dashboard for the internal Chaos Engineering Agent. Most features ship as 
 ### Platform
 - **Posture** (`/posture`) — gap scan (live) + bootstrap actions (preview)
 - **CI gate** (`/ci-gate`) — PR resilience checks, regression suites
-- **Policies** (`/policies`) — blast caps, approvals, executor allowlist
+- **Policies** (`/policies`) — blast caps, approvals, executor allowlist, **YAML rule editor**
+- **Referee** (`/referee`) — scoring weights, freeze calendar, round orchestration
 - **Integrations** (`/integrations`) — Slack, GitHub, PagerDuty, Grafana, Tempo
 - **Observability** (`/observability`) — steady-state guard, live metrics, deep links
-- **Load testing** (`/load-testing`) — k6 scenarios paired with faults
+- **Performance testing** (`/load-testing`) — load, stress, performance, soak scenarios paired with faults
 
 ### Vision
 - **UI walkthrough** (`/demo`) — end-to-end flow in one page
@@ -41,8 +42,33 @@ npm run dev
 
 UI: http://localhost:5173 (proxies `/api` → `http://localhost:8000`)
 
+Use the **context switcher** in the header to change cluster/namespace (preview — not wired to API yet).
+
 Preview pages work without the API. Live pages need `make dev` running.
 
 ## Stack
 
-React 18 · Vite · TypeScript · Tailwind v4 · React Router · Zustand · Axios
+| Layer | Technology |
+|-------|------------|
+| **Framework** | React 18 + Vite 5 + TypeScript 5 |
+| **Routing** | React Router 6 |
+| **Server state** | TanStack Query 5 (polling, cache, mutations) |
+| **Client state** | Zustand (cluster/namespace context) |
+| **API** | Axios → `/api` proxy → FastAPI `:8000` |
+| **Styling** | Tailwind CSS v4 |
+| **UI** | Radix primitives + CVA (shadcn-style) + lucide-react |
+| **Charts** | Recharts (metrics) · d3 (topology graphs, preview) |
+| **Toasts** | Sonner |
+| **Live updates** | TanStack Query `refetchInterval` (WebSocket planned) |
+
+## Design
+
+Mission-control aesthetic for internal SRE teams — inspired by Grafana / Linear / kubemigrate:
+
+- **Plus Jakarta Sans** + **JetBrains Mono** (IDs, metrics)
+- **Amber** primary (chaos brand) — not generic purple-on-dark
+- Subtle mesh background, elevated surfaces, data tables
+- Status dots with pulse for active runs
+- TanStack Query for live data; Recharts for metrics
+
+Preview pages (`/demo`, `/roadmap`) remain for walkthroughs but are no longer the dashboard focus.

@@ -53,7 +53,7 @@ class Dependency(BaseModel):
 
 class ObservabilityTarget(BaseModel):
     name: str
-    type: str  # prometheus, grafana, tempo, pagerduty, github
+    type: str  # prometheus, grafana, tempo, loki, pagerduty, github
     status: str  # ok, gap, missing
     detail: Optional[str] = None
 

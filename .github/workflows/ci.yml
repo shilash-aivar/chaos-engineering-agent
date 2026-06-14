@@ -23,4 +23,16 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - run: echo "PR-scoped chaos in staging — not implemented yet"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Run chaos resilience gate
+        env:
+          CHAOS_AGENT_SIMULATE_EXECUTION: "true"
+        run: |
+          python3 scripts/ci_gate.py \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --no-execute \
+            --files $(git diff --name-only origin/${{ github.base_ref }}...HEAD | tr '\n' ' ') \
+            --services checkout payments-api

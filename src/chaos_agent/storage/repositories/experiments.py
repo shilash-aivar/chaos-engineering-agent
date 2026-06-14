@@ -11,6 +11,8 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chaos_agent.models import ExperimentPlan, ExperimentState
+from chaos_agent.observability.types import FaultWindowEvidence
+from chaos_agent.remediator.models import RemediationResult
 from chaos_agent.storage.orm import ExperimentRow, TimelineEventRow
 
 
@@ -80,6 +82,41 @@ class ExperimentRepository:
         )
         await self.session.commit()
 
+    async def set_findings(self, experiment_id: str, result: RemediationResult) -> None:
+        await self.session.execute(
+            update(ExperimentRow)
+            .where(ExperimentRow.id == experiment_id)
+            .values(
+                findings_json=result.model_dump_json(),
+                findings_count=len(result.findings),
+                updated_at=_utcnow(),
+            ),
+        )
+        await self.session.commit()
+
+    async def list_with_findings(self, limit: int = 50) -> list[ExperimentRow]:
+        result = await self.session.execute(
+            select(ExperimentRow)
+            .where(ExperimentRow.findings_json.is_not(None))
+            .order_by(ExperimentRow.updated_at.desc())
+            .limit(limit),
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    def evidence_from_row(row: ExperimentRow) -> FaultWindowEvidence:
+        if not row.evidence_json:
+            raise ValueError("experiment has no evidence")
+        return FaultWindowEvidence.model_validate_json(row.evidence_json)
+
+    async def set_evidence(self, experiment_id: str, evidence: FaultWindowEvidence) -> None:
+        await self.session.execute(
+            update(ExperimentRow)
+            .where(ExperimentRow.id == experiment_id)
+            .values(evidence_json=evidence.model_dump_json(), updated_at=_utcnow()),
+        )
+        await self.session.commit()
+
     async def request_abort(self, experiment_id: str) -> bool:
         row = await self.get(experiment_id)
         if row is None:
@@ -140,6 +177,15 @@ class ExperimentRepository:
     async def detail_dict(self, row: ExperimentRow) -> dict[str, Any]:
         events = await self.get_events(row.id)
         plan = self.plan_from_row(row)
+        evidence = None
+        if row.evidence_json:
+            evidence = FaultWindowEvidence.model_validate_json(row.evidence_json).model_dump(mode="json")
+        findings = None
+        if row.findings_json:
+            findings = json.loads(row.findings_json)
+        baseline = None
+        if row.baseline_json:
+            baseline = json.loads(row.baseline_json)
         return {
             **self.summary_dict(row),
             "plan": plan.model_dump(),
@@ -152,6 +198,9 @@ class ExperimentRepository:
                 for e in events
             ],
             "findings_count": row.findings_count,
+            "findings": findings,
             "slo_breached": row.slo_breached,
             "error_message": row.error_message,
+            "baseline": baseline,
+            "evidence": evidence,
         }

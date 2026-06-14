@@ -1,10 +1,14 @@
+from typing import Any, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from chaos_agent.composer.rules import compose_from_scenario
+from chaos_agent.composer.service import compose_full, compose_scenario
 from chaos_agent.composer.validators.safety import SafetyValidationError, validate_plan
+from chaos_agent.config import get_settings
 from chaos_agent.models import ExperimentPlan, ExperimentState
 from chaos_agent.orchestrator.engine import get_engine
+from chaos_agent.referee.validator import RefereeValidationError, validate_plan_for_execution
 from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
 
@@ -16,9 +20,25 @@ class ComposeRequest(BaseModel):
     namespace: str = "staging"
 
 
+class ComposeFullRequest(BaseModel):
+    scenario: str
+    namespace: str = "staging"
+    enforce_referee: bool = True
+
+
 class ComposeResponse(BaseModel):
     plan: ExperimentPlan
     summary: str
+    composer: str = "rules"
+
+
+class ComposeFullResponse(BaseModel):
+    plan: ExperimentPlan
+    summary: str
+    composer: str = "rules"
+    pre_mortem: dict[str, Any]
+    referee: dict[str, Any]
+    twin_preview: Optional[dict[str, Any]] = None
 
 
 @router.get("")
@@ -43,29 +63,89 @@ async def get_experiment(experiment_id: str) -> dict:
 
 @router.post("")
 async def create_experiment(plan: ExperimentPlan) -> dict:
+    settings = get_settings()
+    needs_approval = (
+        settings.require_approval_production
+        and plan.blast_radius.environment == "production"
+    )
     try:
-        validate_plan(plan)
-    except SafetyValidationError as exc:
+        validate_plan_for_execution(plan, skip_production_gate=needs_approval)
+    except (SafetyValidationError, RefereeValidationError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     factory = get_session_factory()
     async with factory() as session:
         repo = ExperimentRepository(session)
         row = await repo.create(plan)
+        if needs_approval:
+            await repo.set_state(row.id, ExperimentState.AWAITING_APPROVAL)
+            await repo.add_event(row.id, "Awaiting approval", "Production experiment needs referee sign-off")
+            await session.commit()
+            try:
+                from chaos_agent.integrations.slack.client import SlackClient
+
+                slack = SlackClient()
+                if slack.available:
+                    await slack.notify_approval_needed(
+                        row.id,
+                        plan.name,
+                        plan.blast_radius.environment,
+                        api_base=settings.api_public_url,
+                    )
+            except Exception:
+                pass
+            return repo.summary_dict(await repo.get(row.id))
+
         summary = repo.summary_dict(row)
 
-    get_engine().start(row.id)
+    await get_engine().start(row.id)
     return summary
 
 
 @router.post("/compose", response_model=ComposeResponse)
-async def compose_scenario(body: ComposeRequest) -> ComposeResponse:
-    plan, summary = await compose_from_scenario(body.scenario, body.namespace)
+async def compose_scenario_route(body: ComposeRequest) -> ComposeResponse:
+    plan, summary, mode = await compose_scenario(body.scenario, body.namespace)
     try:
         validate_plan(plan)
     except SafetyValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return ComposeResponse(plan=plan, summary=summary)
+    return ComposeResponse(plan=plan, summary=summary, composer=mode)
+
+
+@router.post("/compose-full", response_model=ComposeFullResponse)
+async def compose_full_route(body: ComposeFullRequest) -> ComposeFullResponse:
+    result = await compose_full(
+        body.scenario,
+        body.namespace,
+        enforce_referee=body.enforce_referee,
+    )
+    if not result["referee"]["passed"]:
+        raise HTTPException(status_code=400, detail="; ".join(result["referee"]["errors"]))
+    return ComposeFullResponse(
+        plan=result["plan"],
+        summary=result["summary"],
+        composer=result["composer"],
+        pre_mortem=result["pre_mortem"],
+        referee=result["referee"],
+        twin_preview=result.get("twin_preview"),
+    )
+
+
+@router.post("/{experiment_id}/approve")
+async def approve_experiment(experiment_id: str) -> dict[str, str]:
+    factory = get_session_factory()
+    async with factory() as session:
+        repo = ExperimentRepository(session)
+        row = await repo.get(experiment_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+        if row.state != ExperimentState.AWAITING_APPROVAL.value:
+            raise HTTPException(status_code=409, detail=f"Experiment is {row.state}, not awaiting approval")
+
+    ok = await get_engine().approve(experiment_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Referee rejected plan or approval failed")
+    return {"status": "approved", "experiment_id": experiment_id}
 
 
 @router.post("/{experiment_id}/abort")

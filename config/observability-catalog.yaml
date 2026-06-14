@@ -1,0 +1,26 @@
+# Service → default metrics and log selectors for fault-window evidence.
+services:
+  checkout:
+    metrics:
+      - checkout_error_rate
+      - checkout_p99
+      - inventory_upstream_errors
+    log_selector: '{app="checkout"}'
+  payments-api:
+    metrics:
+      - payments_error_rate
+      - payments_p99
+      - db_connection_errors
+    log_selector: '{app="payments-api"} |= "error"'
+  inventory-api:
+    metrics:
+      - inventory_upstream_errors
+    log_selector: '{app="inventory-api"} |= "error"'
+
+paths:
+  checkout-payments:
+    services: [checkout, payments-api]
+    trace_query: '{ resource.service.name = "checkout" }'
+  payments-db:
+    services: [payments-api]
+    trace_query: '{ resource.service.name = "payments-api" && name = "db.query" }'

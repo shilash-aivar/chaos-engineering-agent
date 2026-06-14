@@ -1,81 +1,152 @@
-import { demoPrComment, demoRegressionSuites } from '@/demo/mockData'
-import { DemoCiGatePreview } from '@/components/demo/DemoCiGatePreview'
-import { PreviewBanner, PhaseBadge } from '@/components/shared/PreviewBanner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState } from 'react'
+import { CheckCircle2, GitPullRequest, Loader2, ShieldAlert, XCircle } from 'lucide-react'
+import { toast } from 'sonner'
+import { useCiGateEvaluate } from '@/hooks/useCiGate'
+import { useAppStore } from '@/store/appStore'
+import { PageHeader, PageShell, StatCard } from '@/components/layout/PageChrome'
+import { SecurityDisclaimer } from '@/components/shared/SecurityDisclaimer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+
+const SAMPLE_FILES = [
+  'src/payments/api/routes.py',
+  'infra/rds.tf',
+  'k8s/payments-deployment.yaml',
+]
 
 export function CiGatePage() {
+  const context = useAppStore((s) => s.context)
+  const [prNumber, setPrNumber] = useState(1847)
+  const evaluateMutation = useCiGateEvaluate()
+  const result = evaluateMutation.data
+
+  const run = () => {
+    evaluateMutation.mutate(
+      {
+        pr_number: prNumber,
+        changed_files: SAMPLE_FILES,
+        changed_services: ['payments-api'],
+        namespace: context.namespace,
+      },
+      {
+        onError: () => toast.error('CI gate evaluation failed'),
+      },
+    )
+  }
+
   return (
-    <div className="space-y-6">
-      <PreviewBanner phase={3} liveHint="Red agent will run PR-scoped faults; GitHub bot posts resilience comment on each push." />
+    <PageShell>
+      <SecurityDisclaimer compact />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DemoCiGatePreview />
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">How CI gate works</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <ol className="list-decimal space-y-2 pl-4">
-              <li>Diff analysis identifies blast-sensitive services in the PR</li>
-              <li>Red agent composes 1–3 targeted faults on changed paths</li>
-              <li>Experiments run in ephemeral staging namespace</li>
-              <li>Referee compares against regression suite baseline</li>
-              <li>GitHub status check + markdown comment on the PR</li>
-            </ol>
-            <PhaseBadge status="preview" phase={3} />
-          </CardContent>
-        </Card>
-      </div>
+      <PageHeader
+        title="CI gate"
+        description="Evaluate pull requests against OWASP probes and a chaos fault before merge. Posts a GitHub comment with resilience score delta."
+        badge={
+          <Badge variant="outline" className="font-mono text-[10px]">
+            PR #{prNumber}
+          </Badge>
+        }
+      />
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-sm">Regression suites</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Equilibrium Red/Blue rounds and passed experiments become permanent suites
-            </p>
-          </div>
-          <Button variant="outline" size="sm" disabled>
-            Export suite
+      <section className="surface-card mb-6 rounded-lg p-5">
+        <h2 className="text-sm font-semibold">Evaluate PR</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Namespace {context.namespace} · changed files: {SAMPLE_FILES.join(', ')}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Input
+            type="number"
+            className="max-w-[140px]"
+            value={prNumber}
+            onChange={(e) => setPrNumber(Number(e.target.value))}
+          />
+          <Button onClick={run} disabled={evaluateMutation.isPending}>
+            {evaluateMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Evaluating…
+              </>
+            ) : (
+              <>
+                <GitPullRequest className="h-4 w-4" />
+                Run CI gate check
+              </>
+            )}
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {demoRegressionSuites.map((suite) => (
-            <div
-              key={suite.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3"
-            >
-              <div>
-                <p className="text-sm font-medium">{suite.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {suite.source.replace('_', ' ')} · last run {suite.last_run}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={suite.passing === suite.tests ? 'success' : 'warning'}>
-                  {suite.passing}/{suite.tests} passing
-                </Badge>
-                <Button variant="ghost" size="sm" disabled>
-                  Run in CI
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Raw PR comment preview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="overflow-auto rounded-md border border-border bg-muted p-4 text-xs whitespace-pre-wrap">
-            {demoPrComment}
-          </pre>
-        </CardContent>
-      </Card>
-    </div>
+      {result && (
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              icon={result.passed ? CheckCircle2 : XCircle}
+              label="Gate status"
+              value={result.passed ? 'Pass' : 'Fail'}
+              accent={result.passed ? 'teal' : 'rose'}
+            />
+            <StatCard
+              icon={ShieldAlert}
+              label="Probes selected"
+              value={result.probes.length}
+              accent="amber"
+            />
+            <StatCard
+              icon={GitPullRequest}
+              label="Resilience delta"
+              value={`${result.resilience_score_before} → ${result.resilience_score_after}`}
+              accent="sky"
+            />
+          </div>
+
+          <section
+            className={`rounded-lg border p-5 ${
+              result.passed
+                ? 'border-success/30 bg-success/5'
+                : 'border-destructive/30 bg-destructive/5'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {result.passed ? (
+                <CheckCircle2 className="h-5 w-5 text-success" />
+              ) : (
+                <XCircle className="h-5 w-5 text-destructive" />
+              )}
+              <p className="font-semibold">
+                {result.passed ? 'Merge allowed' : 'Merge blocked'} — PR #{result.pr_number}
+              </p>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Fault: {result.fault.executor} / {result.fault.type} on {result.fault.target}
+            </p>
+          </section>
+
+          <section className="surface-card rounded-lg">
+            <div className="border-b border-border px-5 py-4">
+              <h3 className="text-sm font-semibold">Selected probes</h3>
+            </div>
+            <div className="divide-y divide-border">
+              {result.probes.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center gap-2 px-5 py-3 text-sm">
+                  <Badge variant="outline">{p.cwe}</Badge>
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-muted-foreground">→ {p.target_service}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="surface-card rounded-lg">
+            <div className="border-b border-border px-5 py-4">
+              <h3 className="text-sm font-semibold">GitHub comment preview</h3>
+            </div>
+            <pre className="overflow-auto px-5 py-4 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+              {result.comment_markdown}
+            </pre>
+          </section>
+        </div>
+      )}
+    </PageShell>
   )
 }

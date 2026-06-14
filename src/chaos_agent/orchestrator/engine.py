@@ -8,11 +8,17 @@ from typing import TYPE_CHECKING, Optional
 
 from chaos_agent.collectors.prometheus.client import PrometheusClient
 from chaos_agent.composer.validators.safety import SafetyValidationError, validate_plan
+from chaos_agent.referee.validator import RefereeValidationError, validate_plan_for_execution
 from chaos_agent.config import get_settings
 from chaos_agent.executors.base import RollbackHandle
+from chaos_agent.executors.aws_fis.executor import AwsFisExecutor
 from chaos_agent.executors.chaos_mesh.executor import ChaosMeshExecutor
+from chaos_agent.executors.k6.executor import K6Executor
 from chaos_agent.executors.toxiproxy.executor import ToxiproxyExecutor
 from chaos_agent.models import ExperimentPlan, ExperimentState, FaultExecutor
+from chaos_agent.observability.capture import capture_experiment_evidence
+from chaos_agent.remediator.pipeline import run_remediation_pipeline
+from chaos_agent.observability.correlator import utcnow
 from chaos_agent.orchestrator.guards.steady_state import SteadyStateGuard
 from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
@@ -32,6 +38,8 @@ class ExperimentEngine:
         self.guard = SteadyStateGuard(self.prom)
         self.chaos_mesh = ChaosMeshExecutor()
         self.toxiproxy = ToxiproxyExecutor()
+        self.k6 = K6Executor()
+        self.aws_fis = AwsFisExecutor()
         self._running: dict[str, asyncio.Task[None]] = {}
 
     async def start(self, experiment_id: str) -> None:
@@ -56,6 +64,7 @@ class ExperimentEngine:
 
             plan = repo.plan_from_row(row)
             handles: list[RollbackHandle] = []
+            fault_started_at = None
 
             if await repo.is_abort_requested(experiment_id):
                 await repo.set_state(experiment_id, ExperimentState.COMPLETE)
@@ -85,7 +94,33 @@ class ExperimentEngine:
                     await session.commit()
                     self.chaos_mesh.simulate = True
 
+                    self.chaos_mesh.simulate = True
+                    self.k6.simulate = True
+                    self.aws_fis.simulate = True
+
             try:
+                await repo.set_state(experiment_id, ExperimentState.SIMULATING)
+                fault_target = (
+                    plan.faults[0].target
+                    if plan.faults and plan.faults[0].target
+                    else (plan.targets[0].service if plan.targets else "checkout")
+                )
+                await repo.add_event(experiment_id, "Twin simulation", f"Analyzing blast from {fault_target}")
+                await session.commit()
+                try:
+                    from chaos_agent.platform.twin_service import get_twin_analysis
+
+                    twin = await get_twin_analysis(plan.blast_radius.namespace, fault_target=fault_target)
+                    await repo.add_event(
+                        experiment_id,
+                        "Twin complete",
+                        twin.get("predicted_cascade", "paths analyzed"),
+                    )
+                    await session.commit()
+                except Exception as exc:
+                    await repo.add_event(experiment_id, "Twin skipped", str(exc))
+                    await session.commit()
+
                 await repo.set_state(experiment_id, ExperimentState.RUNNING)
                 await repo.add_event(experiment_id, "Capturing baseline", "Prometheus steady-state window")
                 await session.commit()
@@ -110,6 +145,8 @@ class ExperimentEngine:
                             plan.blast_radius.max_replicas_pct,
                         )
                         handles.append(handle)
+                        if fault_started_at is None:
+                            fault_started_at = utcnow()
                         await repo.add_event(
                             experiment_id,
                             "Fault injected",
@@ -124,14 +161,57 @@ class ExperimentEngine:
                             plan.blast_radius.max_replicas_pct,
                         )
                         handles.append(handle)
+                        if fault_started_at is None:
+                            fault_started_at = utcnow()
                         await repo.add_event(
                             experiment_id,
                             "Fault injected",
                             f"toxiproxy/{fault.type} → {fault.target}",
                         )
                         await session.commit()
+                    elif fault.executor == FaultExecutor.K6:
+                        handle = await self.k6.apply(
+                            experiment_id,
+                            fault,
+                            plan.blast_radius.namespace,
+                            plan.blast_radius.max_replicas_pct,
+                        )
+                        handles.append(handle)
+                        if fault_started_at is None:
+                            fault_started_at = utcnow()
+                        await repo.add_event(
+                            experiment_id,
+                            "Load test started",
+                            f"k6/{fault.type} → {fault.target or plan.targets[0].service if plan.targets else 'checkout'}",
+                        )
+                        await session.commit()
+                    elif fault.executor == FaultExecutor.AWS_FIS:
+                        handle = await self.aws_fis.apply(
+                            experiment_id,
+                            fault,
+                            plan.blast_radius.namespace,
+                            plan.blast_radius.max_replicas_pct,
+                        )
+                        handles.append(handle)
+                        if fault_started_at is None:
+                            fault_started_at = utcnow()
+                        await repo.add_event(
+                            experiment_id,
+                            "AWS FIS started",
+                            f"aws_fis/{fault.type} → {fault.target or 'aws'}",
+                        )
+                        await session.commit()
 
-                await self._monitor_loop(repo, session, experiment_id, plan, baseline, handles)
+                await self._monitor_loop(
+                    repo,
+                    session,
+                    experiment_id,
+                    plan,
+                    baseline,
+                    handles,
+                    simulate=simulate,
+                    fault_started_at=fault_started_at or row.created_at,
+                )
 
             except Exception as exc:
                 logger.exception("experiment_failed", extra={"experiment_id": experiment_id})
@@ -148,6 +228,9 @@ class ExperimentEngine:
         plan: ExperimentPlan,
         baseline: dict[str, float],
         handles: list[RollbackHandle],
+        *,
+        simulate: bool,
+        fault_started_at,
     ) -> None:
         elapsed = 0
         aborted = False
@@ -178,6 +261,14 @@ class ExperimentEngine:
                 await repo.mark_slo_breached(experiment_id)
                 await repo.add_event(experiment_id, "SLO breach detected", breach_reason)
                 await session.commit()
+                try:
+                    from chaos_agent.integrations.slack.client import SlackClient
+
+                    slack = SlackClient()
+                    if slack.available:
+                        await slack.notify_slo_breach(experiment_id, breach_reason or "threshold exceeded")
+                except Exception as exc:
+                    logger.debug("slack_slo_notify_skipped", extra={"error": str(exc)})
                 break
 
             await asyncio.sleep(self.settings.guard_interval_seconds)
@@ -204,11 +295,34 @@ class ExperimentEngine:
         await repo.set_state(experiment_id, ExperimentState.COMPLETE)
         await session.commit()
 
+        evidence = await capture_experiment_evidence(
+            experiment_id,
+            force_simulate=simulate,
+        )
+        await repo.add_event(
+            experiment_id,
+            "Fault-window evidence captured",
+            f"{len(evidence.metrics)} metrics · {len(evidence.logs)} log streams · "
+            f"{len(evidence.traces)} trace paths"
+            + (" (simulated)" if evidence.simulated else ""),
+        )
+        await session.commit()
+
+        self._schedule_remediation(experiment_id)
+
+    def _schedule_remediation(self, experiment_id: str) -> None:
+        if self.settings.auto_remediate_on_complete:
+            asyncio.create_task(run_remediation_pipeline(experiment_id))
+
     async def _rollback_all(self, handles: list[RollbackHandle]) -> None:
         for handle in handles:
             try:
                 if handle.executor == "toxiproxy":
                     await self.toxiproxy.rollback(handle)
+                elif handle.executor == "k6":
+                    await self.k6.rollback(handle)
+                elif handle.executor == "aws_fis":
+                    await self.aws_fis.rollback(handle)
                 else:
                     await self.chaos_mesh.rollback(handle)
             except Exception as exc:
@@ -224,10 +338,33 @@ class ExperimentEngine:
             try:
                 if handle.executor == "toxiproxy":
                     await self.toxiproxy.rollback(handle)
+                elif handle.executor == "k6":
+                    await self.k6.rollback(handle)
+                elif handle.executor == "aws_fis":
+                    await self.aws_fis.rollback(handle)
                 else:
                     await self.chaos_mesh.rollback(handle)
             except Exception as exc:
                 logger.warning("ttl_rollback_failed", extra={"error": str(exc)})
+
+    async def approve(self, experiment_id: str) -> bool:
+        factory = get_session_factory()
+        async with factory() as session:
+            repo = ExperimentRepository(session)
+            row = await repo.get(experiment_id)
+            if row is None or row.state != ExperimentState.AWAITING_APPROVAL.value:
+                return False
+            plan = repo.plan_from_row(row)
+            try:
+                validate_plan_for_execution(plan)
+            except RefereeValidationError:
+                return False
+            await repo.set_state(experiment_id, ExperimentState.PENDING)
+            await repo.add_event(experiment_id, "Referee approved", "Execution gate cleared")
+            await session.commit()
+
+        await self.start(experiment_id)
+        return True
 
     async def request_abort(self, experiment_id: str) -> bool:
         factory = get_session_factory()

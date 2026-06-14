@@ -27,8 +27,9 @@ def validate_plan(plan: ExperimentPlan) -> None:
 
     for fault in plan.faults:
         if fault.executor.value == "aws_fis":
-            raise SafetyValidationError("aws_fis executor not enabled in phase 1")
-        if fault.executor.value not in ("chaos_mesh", "toxiproxy", "k6"):
+            if not settings.aws_fis_enabled:
+                raise SafetyValidationError("aws_fis executor disabled — set CHAOS_AGENT_AWS_FIS_ENABLED=true")
+        if fault.executor.value not in ("chaos_mesh", "toxiproxy", "k6", "aws_fis"):
             raise SafetyValidationError(f"executor not enabled: {fault.executor.value}")
 
     if not plan.watch_metrics:

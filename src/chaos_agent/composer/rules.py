@@ -89,6 +89,7 @@ async def compose_from_scenario(scenario: str, namespace: str = "staging") -> tu
     if not evidence:
         evidence = ["Infra snapshot loaded — no critical gaps in evidence preview"]
 
+    max_replicas = 20.0 if any(f.type == "pod_kill" for f in faults) else 30.0
     plan = ExperimentPlan(
         name=name,
         hypothesis=scenario,
@@ -96,7 +97,7 @@ async def compose_from_scenario(scenario: str, namespace: str = "staging") -> tu
         targets=targets,
         faults=faults,
         infra_evidence=evidence,
-        blast_radius=BlastRadius(namespace=namespace, environment="staging"),
+        blast_radius=BlastRadius(namespace=namespace, environment="staging", max_replicas_pct=max_replicas),
         watch_metrics=watch_metrics,
         rollback=RollbackSpec(type="delete_chaos_crd", ttl_seconds=300),
     )

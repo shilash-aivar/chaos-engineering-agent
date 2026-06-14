@@ -250,7 +250,7 @@ def dashboard_stats() -> dict[str, Any]:
         "experiments_running": running,
         "avg_resilience_score": 67,
         "posture_gaps": len(_POSTURE_GAPS),
-        "red_blue_campaigns": len(_CAMPAIGNS),
+        "red_blue_campaigns": len(list_campaigns()),
         "last_experiment_at": _EXPERIMENTS[0]["created_at"] if _EXPERIMENTS else None,
     }
 
@@ -260,23 +260,19 @@ def posture_scan() -> dict[str, Any]:
 
 
 def list_campaigns() -> list[dict[str, Any]]:
-    return _CAMPAIGNS
+    import asyncio
+
+    from chaos_agent.red_blue import campaign as rb
+
+    return asyncio.run(rb.list_campaigns())
 
 
 def start_campaign(name: str) -> dict[str, Any]:
-    campaign = {
-        "id": f"camp-{len(_CAMPAIGNS) + 1:03d}",
-        "name": name,
-        "state": "active",
-        "round": 1,
-        "max_rounds": 3,
-        "red_score": 0,
-        "blue_score": 0,
-        "leader": "draw",
-        "last_round_at": _ts(0),
-    }
-    _CAMPAIGNS.insert(0, campaign)
-    return campaign
+    import asyncio
+
+    from chaos_agent.red_blue import campaign as rb
+
+    return asyncio.run(rb.start_campaign(name))
 
 
 def abort_experiment(experiment_id: str) -> bool:

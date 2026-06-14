@@ -1,0 +1,1 @@
+"""Tempo trace collector."""

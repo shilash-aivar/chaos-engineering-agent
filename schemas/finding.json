@@ -7,6 +7,14 @@
   "properties": {
     "id": { "type": "string" },
     "severity": { "enum": ["critical", "high", "medium", "low"] },
+    "level": {
+      "enum": [
+        "infra", "db", "dependency", "app", "scaling",
+        "security", "monitoring", "ha", "resiliency", "reliability"
+      ]
+    },
+    "declared_evidence": { "type": "array", "items": { "type": "string" } },
+    "observed_evidence": { "type": "array", "items": { "type": "string" } },
     "evidence": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
     "prescription": {
       "type": "object",

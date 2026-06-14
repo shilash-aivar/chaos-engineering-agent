@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 from chaos_agent.collectors.app.collector import AppCollector
@@ -10,6 +11,8 @@ from chaos_agent.collectors.deps.collector import DependencyCollector
 from chaos_agent.collectors.k8s.collector import K8sCollector
 from chaos_agent.collectors.observability.collector import ObservabilityCollector
 from chaos_agent.graph.types import GraphEdge, GraphEdgeType, InfraSnapshot, SnapshotContext
+
+_COLLECTOR_TIMEOUT_SECONDS = 4
 
 
 class SnapshotBuilder:
@@ -21,13 +24,22 @@ class SnapshotBuilder:
         self.deps = DependencyCollector(namespace)
         self.obs = ObservabilityCollector()
 
+    async def _collect_bounded(self, coro, fallback):
+        try:
+            return await asyncio.wait_for(coro, timeout=_COLLECTOR_TIMEOUT_SECONDS)
+        except Exception:
+            return fallback
+
     async def build(self, context: Optional[SnapshotContext] = None) -> InfraSnapshot:
         ctx = context or SnapshotContext(namespace=self.namespace)
-        apps = await self.app.collect()
-        dependencies = await self.deps.collect()
-        observability = await self.obs.collect()
-        k8s_data = await self.k8s.collect()
-        aws_data = await self.aws.collect()
+
+        apps, dependencies, observability, k8s_data, aws_data = await asyncio.gather(
+            self._collect_bounded(self.app.collect(), []),
+            self._collect_bounded(self.deps.collect(), []),
+            self._collect_bounded(self.obs.collect(), []),
+            self._collect_bounded(self.k8s.collect(), self.k8s._seed()),
+            self._collect_bounded(self.aws.collect(), self.aws._seed()),
+        )
 
         edges: list[GraphEdge] = [
             GraphEdge.model_validate({"from": "ingress", "to": "checkout", "type": "ingress"}),
