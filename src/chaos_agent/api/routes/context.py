@@ -7,12 +7,29 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from chaos_agent.platform.target_context_service import list_target_contexts, probe_context
 from chaos_agent.context.ingest import ingest_context
 from chaos_agent.context.types import ContextAnalysisResult, ContextSnapshot
 from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.repositories.context import ContextRepository
 
 router = APIRouter()
+
+
+@router.get("/targets")
+async def get_target_contexts() -> dict:
+    contexts = list_target_contexts()
+    return {"contexts": contexts}
+
+
+@router.get("/targets/{context_id}/probe")
+async def probe_target_context(context_id: str) -> dict:
+    from chaos_agent.platform.target_context_service import get_context_by_id
+
+    ctx = get_context_by_id(context_id)
+    if ctx is None:
+        raise HTTPException(status_code=404, detail="Unknown context")
+    return await probe_context(ctx["namespace"], cluster=ctx.get("cluster", "eks-staging"))
 
 
 class IngestRequest(BaseModel):

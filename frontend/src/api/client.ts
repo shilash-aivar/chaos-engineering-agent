@@ -38,13 +38,17 @@ export async function getHealth() {
   return data
 }
 
-export async function getDashboardStats() {
-  const { data } = await api.get<DashboardStats>('/dashboard/stats')
+export async function getDashboardStats(namespace?: string) {
+  const { data } = await api.get<DashboardStats>('/dashboard/stats', {
+    params: namespace ? { namespace } : undefined,
+  })
   return data
 }
 
-export async function listExperiments() {
-  const { data } = await api.get<ExperimentSummary[]>('/experiments')
+export async function listExperiments(namespace?: string) {
+  const { data } = await api.get<ExperimentSummary[]>('/experiments', {
+    params: namespace ? { namespace } : undefined,
+  })
   return data
 }
 
@@ -66,7 +70,15 @@ export async function composeScenario(scenario: string, namespace = 'staging') {
   return data
 }
 
-export async function composeFullScenario(scenario: string, namespace = 'staging') {
+export async function composeFullScenario(
+  scenario: string,
+  namespace = 'staging',
+  options?: {
+    environment?: string
+    prior_experiment_id?: string
+    use_latest_feedback?: boolean
+  },
+) {
   const { data } = await api.post<{
     plan: ExperimentPlan
     summary: string
@@ -74,8 +86,32 @@ export async function composeFullScenario(scenario: string, namespace = 'staging
     pre_mortem: Record<string, unknown>
     referee: { passed: boolean; errors: string[] }
     twin_preview?: Record<string, unknown>
-  }>('/experiments/compose-full', { scenario, namespace })
+    prior_feedback?: Record<string, unknown>
+    llm_grounded?: boolean
+  }>('/experiments/compose-full', {
+    scenario,
+    namespace,
+    environment: options?.environment ?? namespace === 'production' ? 'production' : 'staging',
+    prior_experiment_id: options?.prior_experiment_id,
+    use_latest_feedback: options?.use_latest_feedback ?? false,
+  })
   return data
+}
+
+export async function getContextTargets() {
+  const { data } = await api.get<{
+    contexts: Array<{
+      id: string
+      cluster: string
+      namespace: string
+      environment: string
+      aws_account: string
+      aws_region: string
+      label: string
+      is_default?: boolean
+    }>
+  }>('/context/targets')
+  return data.contexts
 }
 
 export async function approveExperiment(id: string) {
@@ -120,9 +156,19 @@ export async function getFindingRunbook(experimentId: string, findingId: string)
 }
 
 export async function validateRefereePlan(plan: ExperimentPlan) {
-  const { data } = await api.post<{ passed: boolean; errors: string[] }>(
-    '/agents/referee/validate',
-    { plan },
+  const { data } = await api.post<{
+    passed: boolean
+    errors: string[]
+    freeze_active: boolean
+    freeze_reason?: string | null
+  }>('/agents/referee/validate', { plan })
+  return data
+}
+
+export async function exportEquilibriumRound(campaignId: string, roundNum: number) {
+  const { data } = await api.post<{ exported: boolean; message?: string; suite?: Record<string, unknown> }>(
+    '/agents/referee/export-equilibrium',
+    { campaign_id: campaignId, round_num: roundNum },
   )
   return data
 }
@@ -324,6 +370,7 @@ export async function getAgentStatus() {
   const { data } = await api.get<{
     llm_enabled: boolean
     llm_available: boolean
+    llm_connection: 'connected' | 'disabled' | 'missing_api_key'
     model: string | null
     agents: Record<string, string>
   }>('/agents/status')
@@ -353,6 +400,8 @@ export async function getInfrastructure(namespace = 'staging') {
     rings: Record<string, Array<{ name: string; detail: string; status: string }>>
     snapshot: InfraSnapshot
     namespace: string
+    live_data?: boolean
+    collection_sources?: Record<string, string>
   }>('/platform/infrastructure', { params: { namespace } })
   return data
 }
@@ -450,10 +499,11 @@ export async function getChaosDna(namespace = 'staging') {
     org_score: number
     org_delta: string
     faults_survived_avg: number
-    mttr_seconds: number
+    mttr_seconds: number | null
     regression_suites_passing: number
     profiles: ChaosDnaProfile[]
     history: Array<{ week: string; score: number }>
+    empty_state?: boolean
   }>('/chaos-dna', { params: { namespace } })
   return data
 }

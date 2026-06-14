@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2, Play, ShieldCheck, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { composeFullScenario } from '@/api/client'
+import { useAgentStatus } from '@/hooks/useAgentStatus'
 import { useCreateExperiment } from '@/hooks/useExperiments'
 import { PageHeader, PageShell } from '@/components/layout/PageChrome'
+import { useAppStore } from '@/store/appStore'
 import type { ExperimentPlan } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,24 +20,37 @@ const examples = [
 
 export function NewExperimentPage() {
   const navigate = useNavigate()
+  const namespace = useAppStore((s) => s.context.namespace)
+  const environment = useAppStore((s) => s.context.environment)
   const createMutation = useCreateExperiment()
+  const agentStatus = useAgentStatus()
   const [scenario, setScenario] = useState('')
+  const [useFeedback, setUseFeedback] = useState(true)
   const [plan, setPlan] = useState<ExperimentPlan | null>(null)
   const [summary, setSummary] = useState('')
   const [preMortem, setPreMortem] = useState<Record<string, unknown> | null>(null)
   const [referee, setReferee] = useState<{ passed: boolean; errors: string[] } | null>(null)
+  const [priorFeedback, setPriorFeedback] = useState<Record<string, unknown> | null>(null)
+  const [llmGrounded, setLlmGrounded] = useState(false)
   const [composerMode, setComposerMode] = useState<'llm' | 'rules' | null>(null)
   const [composing, setComposing] = useState(false)
+
+  const llm = agentStatus.data
 
   const handleCompose = async () => {
     if (!scenario.trim()) return
     setComposing(true)
     try {
-      const res = await composeFullScenario(scenario.trim())
+      const res = await composeFullScenario(scenario.trim(), namespace, {
+        environment,
+        use_latest_feedback: useFeedback,
+      })
       setPlan(res.plan)
       setSummary(res.summary)
       setPreMortem(res.pre_mortem)
       setReferee(res.referee)
+      setPriorFeedback(res.prior_feedback ?? null)
+      setLlmGrounded(Boolean(res.llm_grounded))
       setComposerMode(res.composer ?? (res.plan.source === 'llm' ? 'llm' : 'rules'))
     } catch {
       toast.error('Could not generate plan — is the API running?')
@@ -55,11 +70,23 @@ export function NewExperimentPage() {
     })
   }
 
+  const llmBanner =
+    llm?.llm_connection === 'connected'
+      ? { variant: 'success' as const, text: `LLM connected · ${llm.model}` }
+      : llm?.llm_connection === 'disabled'
+        ? { variant: 'secondary' as const, text: 'LLM disabled — using rules composer' }
+        : { variant: 'warning' as const, text: 'No API key — plans use rules, not live infra grounding' }
+
   return (
     <PageShell>
       <PageHeader
         title="Compose experiment"
         description="Describe the failure in plain language. The composer grounds the plan on your infra snapshot and safety policies."
+        badge={
+          <Badge variant={llmBanner.variant === 'success' ? 'success' : llmBanner.variant === 'warning' ? 'warning' : 'secondary'}>
+            {llmBanner.text}
+          </Badge>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-5">
@@ -70,7 +97,7 @@ export function NewExperimentPage() {
               <h2 className="text-sm font-semibold">Scenario</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              What should break, and what should stay within SLO?
+              Target: {namespace} · {environment}
             </p>
           </div>
           <div className="space-y-4 p-5">
@@ -80,6 +107,15 @@ export function NewExperimentPage() {
               onChange={(e) => setScenario(e.target.value)}
               className="min-h-[140px] resize-none bg-input/50 font-sans text-sm"
             />
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={useFeedback}
+                onChange={(e) => setUseFeedback(e.target.checked)}
+                className="rounded border-border"
+              />
+              Learn from latest experiment in this namespace
+            </label>
             <div className="flex flex-col gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Templates
@@ -113,15 +149,13 @@ export function NewExperimentPage() {
               <h2 className="text-sm font-semibold">Review & approve</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Blast radius capped · staging default · auto-rollback on breach
+              Blast radius capped · auto-rollback on breach
             </p>
           </div>
           <div className="p-5">
             {!plan ? (
               <div className="flex min-h-[280px] flex-col items-center justify-center text-center">
-                <p className="text-sm text-muted-foreground">
-                  Plan preview appears after generation.
-                </p>
+                <p className="text-sm text-muted-foreground">Plan preview appears after generation.</p>
                 <p className="mt-1 max-w-sm text-xs text-muted-foreground/80">
                   Includes faults, watch metrics, infra evidence, and rollback spec.
                 </p>
@@ -131,6 +165,12 @@ export function NewExperimentPage() {
                 {summary && (
                   <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                     {summary}
+                  </p>
+                )}
+                {priorFeedback && (
+                  <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
+                    Follow-up from {String(priorFeedback.experiment_id)} · SLO breached:{' '}
+                    {priorFeedback.slo_breached ? 'yes' : 'no'}
                   </p>
                 )}
                 {preMortem && (
@@ -159,6 +199,7 @@ export function NewExperimentPage() {
                       Composer: {composerMode}
                     </Badge>
                   )}
+                  {llmGrounded && <Badge variant="success">infra-grounded</Badge>}
                   <Badge variant="secondary">{plan.blast_radius.environment}</Badge>
                   <Badge variant="warning">≤ {plan.blast_radius.max_replicas_pct}% replicas</Badge>
                 </div>
@@ -205,7 +246,7 @@ export function NewExperimentPage() {
                   ) : (
                     <Play className="h-4 w-4" />
                   )}
-                  Approve & run in staging
+                  Approve & run
                 </Button>
               </div>
             )}

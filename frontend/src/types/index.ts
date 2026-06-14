@@ -111,6 +111,8 @@ export interface PostureGap {
 export interface PostureScanResult {
   gaps: PostureGap[]
   scanned_at: string
+  live_data?: boolean
+  collection_sources?: Record<string, string>
   summary?: {
     k8s: number
     aws: number

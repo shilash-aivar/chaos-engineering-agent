@@ -129,6 +129,11 @@ def test_experiment_captures_evidence(client: TestClient) -> None:
             new_callable=AsyncMock,
             return_value=True,
         ),
+        patch(
+            "chaos_agent.orchestrator.engine.PrometheusClient.snapshot",
+            new_callable=AsyncMock,
+            return_value={"checkout_error_rate": 0.01, "checkout_p99": 0.2},
+        ),
     ):
         create = client.post("/experiments", json=plan.model_dump(mode="json"))
         assert create.status_code == 200
@@ -159,6 +164,11 @@ def test_capture_evidence_backfill(client: TestClient) -> None:
             "chaos_agent.orchestrator.engine.SteadyStateGuard.wait_for_recovery",
             new_callable=AsyncMock,
             return_value=True,
+        ),
+        patch(
+            "chaos_agent.orchestrator.engine.PrometheusClient.snapshot",
+            new_callable=AsyncMock,
+            return_value={"checkout_error_rate": 0.01, "checkout_p99": 0.2},
         ),
     ):
         create = client.post("/experiments", json=plan.model_dump(mode="json"))

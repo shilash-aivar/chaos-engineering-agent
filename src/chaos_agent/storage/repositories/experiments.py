@@ -48,11 +48,22 @@ class ExperimentRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_all(self) -> list[ExperimentRow]:
-        result = await self.session.execute(
-            select(ExperimentRow).order_by(ExperimentRow.created_at.desc()),
-        )
+    async def list_all(self, *, namespace: str | None = None) -> list[ExperimentRow]:
+        stmt = select(ExperimentRow).order_by(ExperimentRow.created_at.desc())
+        if namespace:
+            stmt = stmt.where(ExperimentRow.namespace == namespace)
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_latest_completed(self, namespace: str) -> Optional[ExperimentRow]:
+        result = await self.session.execute(
+            select(ExperimentRow)
+            .where(ExperimentRow.namespace == namespace)
+            .where(ExperimentRow.state.in_(("complete", "failed")))
+            .order_by(ExperimentRow.completed_at.desc())
+            .limit(1),
+        )
+        return result.scalar_one_or_none()
 
     async def set_state(
         self,

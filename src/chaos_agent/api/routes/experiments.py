@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Optional
 
 import logging
@@ -26,7 +28,10 @@ class ComposeRequest(BaseModel):
 class ComposeFullRequest(BaseModel):
     scenario: str
     namespace: str = "staging"
+    environment: str = "staging"
     enforce_referee: bool = True
+    prior_experiment_id: Optional[str] = None
+    use_latest_feedback: bool = False
 
 
 class ComposeResponse(BaseModel):
@@ -42,14 +47,16 @@ class ComposeFullResponse(BaseModel):
     pre_mortem: dict[str, Any]
     referee: dict[str, Any]
     twin_preview: Optional[dict[str, Any]] = None
+    prior_feedback: Optional[dict[str, Any]] = None
+    llm_grounded: bool = False
 
 
 @router.get("")
-async def list_experiments() -> list[dict]:
+async def list_experiments(namespace: Optional[str] = None) -> list[dict]:
     factory = get_session_factory()
     async with factory() as session:
         repo = ExperimentRepository(session)
-        rows = await repo.list_all()
+        rows = await repo.list_all(namespace=namespace)
         return [repo.summary_dict(r) for r in rows]
 
 
@@ -103,9 +110,17 @@ async def create_experiment(plan: ExperimentPlan) -> dict:
             summary["notification_sent"] = notification_sent
             return summary
 
+        experiment_id = row.id
         summary = repo.summary_dict(row)
 
-    await get_engine().start(row.id)
+    from chaos_agent.orchestrator.dispatch import should_run_async
+    from chaos_agent.workers.tasks import dispatch_experiment
+
+    if should_run_async(plan):
+        queued, via = dispatch_experiment(experiment_id)
+        if queued:
+            return {**summary, "dispatch": via}
+    await get_engine().start(experiment_id)
     return summary
 
 
@@ -124,7 +139,10 @@ async def compose_full_route(body: ComposeFullRequest) -> ComposeFullResponse:
     result = await compose_full(
         body.scenario,
         body.namespace,
+        environment=body.environment,
         enforce_referee=body.enforce_referee,
+        prior_experiment_id=body.prior_experiment_id,
+        use_latest_feedback=body.use_latest_feedback,
     )
     if not result["referee"]["passed"]:
         raise HTTPException(status_code=400, detail="; ".join(result["referee"]["errors"]))
@@ -135,6 +153,8 @@ async def compose_full_route(body: ComposeFullRequest) -> ComposeFullResponse:
         pre_mortem=result["pre_mortem"],
         referee=result["referee"],
         twin_preview=result.get("twin_preview"),
+        prior_feedback=result.get("prior_feedback"),
+        llm_grounded=result.get("llm_grounded", False),
     )
 
 

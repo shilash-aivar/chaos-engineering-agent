@@ -25,7 +25,8 @@ class LLMClient:
 
     @property
     def available(self) -> bool:
-        return bool(self.api_key.strip())
+        settings = get_settings()
+        return settings.llm_enabled and bool(self.api_key.strip())
 
     def _get_client(self) -> Any:
         if self._client is None:

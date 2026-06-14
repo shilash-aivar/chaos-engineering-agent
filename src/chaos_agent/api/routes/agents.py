@@ -42,6 +42,13 @@ async def agent_status() -> dict:
     return {
         "llm_enabled": settings.llm_enabled,
         "llm_available": llm.available,
+        "llm_connection": (
+            "connected"
+            if llm.available
+            else "disabled"
+            if not settings.llm_enabled
+            else "missing_api_key"
+        ),
         "model": settings.anthropic_model if llm.available else None,
         "agents": {
             "composer": "llm+rules" if llm.available else "rules",
@@ -57,7 +64,10 @@ async def agent_status() -> dict:
 class ComposeFullRequest(BaseModel):
     scenario: str
     namespace: str = "staging"
+    environment: str = "staging"
     enforce_referee: bool = True
+    prior_experiment_id: Optional[str] = None
+    use_latest_feedback: bool = False
 
 
 class RedPlanRequest(BaseModel):
@@ -114,7 +124,10 @@ async def composer_compose_full(body: ComposeFullRequest) -> dict[str, Any]:
     result = await compose_full(
         body.scenario,
         body.namespace,
+        environment=body.environment,
         enforce_referee=body.enforce_referee,
+        prior_experiment_id=body.prior_experiment_id,
+        use_latest_feedback=body.use_latest_feedback,
     )
     return {
         "plan": result["plan"].model_dump(),
@@ -123,6 +136,8 @@ async def composer_compose_full(body: ComposeFullRequest) -> dict[str, Any]:
         "pre_mortem": result["pre_mortem"],
         "referee": result["referee"],
         "twin_preview": result.get("twin_preview"),
+        "prior_feedback": result.get("prior_feedback"),
+        "llm_grounded": result.get("llm_grounded", False),
     }
 
 

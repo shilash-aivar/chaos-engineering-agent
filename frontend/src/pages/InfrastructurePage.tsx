@@ -36,9 +36,13 @@ export function InfrastructurePage() {
         title="Infrastructure"
         description="Five-ring snapshot from live collectors — K8s, AWS, application, dependencies, observability."
         badge={
-          <Badge variant="outline" className="font-mono text-[10px]">
-            {infra?.namespace ?? 'staging'}
-          </Badge>
+          <>
+            {infra?.live_data === false && <Badge variant="warning">seed data</Badge>}
+            {infra?.live_data && <Badge variant="success">live cluster</Badge>}
+            <Badge variant="outline" className="font-mono text-[10px]">
+              {infra?.namespace ?? 'staging'}
+            </Badge>
+          </>
         }
       />
 

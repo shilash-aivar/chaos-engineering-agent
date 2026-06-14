@@ -1,0 +1,22 @@
+contexts:
+  - id: eks-staging
+    cluster: eks-staging
+    namespace: staging
+    environment: staging
+    aws_account: "111122223333"
+    aws_region: us-east-1
+    label: eks-staging / staging
+  - id: eks-staging-platform
+    cluster: eks-staging
+    namespace: platform
+    environment: staging
+    aws_account: "111122223333"
+    aws_region: us-east-1
+    label: eks-staging / platform
+  - id: eks-prod
+    cluster: eks-prod
+    namespace: production
+    environment: production
+    aws_account: "111122223333"
+    aws_region: us-east-1
+    label: eks-prod / production

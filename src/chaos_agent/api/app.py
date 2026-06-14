@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from chaos_agent.api.middleware import (
     AuditLogMiddleware,
     ApiKeyAuthMiddleware,
+    RateLimitMiddleware,
     RequestIdMiddleware,
     register_exception_handlers,
 )
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(AuditLogMiddleware)
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(ApiKeyAuthMiddleware)
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)

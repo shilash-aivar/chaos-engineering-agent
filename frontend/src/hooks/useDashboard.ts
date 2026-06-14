@@ -8,14 +8,14 @@ export function useDashboard() {
   const namespace = useAppStore((s) => s.context.namespace)
 
   const stats = useQuery({
-    queryKey: queryKeys.dashboard,
-    queryFn: getDashboardStats,
+    queryKey: queryKeys.dashboard(namespace),
+    queryFn: () => getDashboardStats(namespace),
     staleTime: 30_000,
   })
 
   const experiments = useQuery({
-    queryKey: queryKeys.experiments,
-    queryFn: listExperiments,
+    queryKey: queryKeys.experiments(namespace),
+    queryFn: () => listExperiments(namespace),
     staleTime: 15_000,
   })
 

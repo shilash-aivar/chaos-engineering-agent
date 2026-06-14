@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from chaos_agent.config import get_settings
 from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.orm import CampaignRow, ExperimentRow
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
@@ -59,14 +60,17 @@ async def list_regression_suites() -> list[dict[str, Any]]:
             )
 
     if not suites:
-        suites.append(
-            {
-                "id": "suite-seed",
-                "name": "checkout-pod-kill-baseline",
-                "source": "manual",
-                "tests": 3,
-                "passing": 3,
-                "last_run": "pending first campaign",
-            },
-        )
+        settings = get_settings()
+        if settings.demo_mode or settings.seed_data:
+            suites.append(
+                {
+                    "id": "suite-seed",
+                    "name": "checkout-pod-kill-baseline",
+                    "source": "manual",
+                    "tests": 3,
+                    "passing": 3,
+                    "last_run": "pending first campaign",
+                    "demo": True,
+                },
+            )
     return suites

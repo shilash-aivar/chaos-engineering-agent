@@ -10,6 +10,7 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chaos_agent.config import get_settings
 from chaos_agent.security.types import CampaignDetail, CampaignSummary, GeneratedAttackPlan, RoundResult
 from chaos_agent.storage.orm import AttackPlanRow, CampaignRow, RemediationRow
 
@@ -23,6 +24,9 @@ class CampaignRepository:
         self.session = session
 
     async def seed_if_empty(self) -> None:
+        settings = get_settings()
+        if not settings.demo_mode and not settings.seed_data:
+            return
         result = await self.session.execute(select(CampaignRow).limit(1))
         if result.scalar_one_or_none() is not None:
             return

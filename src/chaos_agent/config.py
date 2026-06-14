@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./chaos_agent.db"
     redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/1"
+    use_celery: bool = False
+    celery_long_duration_minutes: int = 10
 
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-20250514"
@@ -53,6 +56,10 @@ class Settings(BaseSettings):
     wasm_plugins_dir: str = "plugins/wasm"
     api_key: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    demo_mode: bool = False
+    seed_data: bool = False
+    rate_limit_per_minute: int = 120
+    k8s_load_test_image: str = "grafana/k6:latest"
 
     baseline_capture_seconds: int = 60
     guard_interval_seconds: int = 15

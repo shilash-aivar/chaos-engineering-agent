@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -21,6 +22,7 @@ from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.repositories.campaign import CampaignRepository
 
 MAX_ROUNDS = 3
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -246,6 +248,13 @@ async def run_round(campaign_id: str) -> Optional[dict[str, Any]]:
         camp["blue_score"] = total_blue
         camp["leader"] = _leader(total_red, total_blue)
         camp["last_round_at"] = _utcnow().isoformat()
+        if result.outcome == "draw":
+            try:
+                from chaos_agent.referee.service import export_equilibrium_round
+
+                await export_equilibrium_round(campaign_id, round_num)
+            except Exception as exc:
+                logger.warning("equilibrium_export_failed", extra={"campaign_id": campaign_id, "error": str(exc)})
         if round_num >= camp["max_rounds"]:
             camp["state"] = "complete"
             try:

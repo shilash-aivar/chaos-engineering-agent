@@ -33,7 +33,7 @@ export function ChaosDnaPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
         <StatCard icon={Dna} label="Org score" value={data?.org_score ?? 0} accent="amber" />
         <StatCard icon={Dna} label="Faults survived (avg)" value={data?.faults_survived_avg ?? 0} accent="teal" />
-        <StatCard icon={Dna} label="MTTR" value={`${data?.mttr_seconds ?? 0}s`} accent="sky" />
+        <StatCard icon={Dna} label="MTTR" value={data?.mttr_seconds != null ? `${data.mttr_seconds}s` : '—'} accent="sky" />
         <StatCard icon={Dna} label="Regression suites" value={data?.regression_suites_passing ?? 0} accent="neutral" />
       </div>
 
@@ -63,7 +63,12 @@ export function ChaosDnaPage() {
           <h2 className="text-sm font-semibold">Service profiles</h2>
         </div>
         <div className="divide-y divide-border">
-          {(data?.profiles ?? []).map((profile) => {
+          {data?.empty_state ? (
+            <p className="px-5 py-6 text-sm text-muted-foreground">
+              No experiments in this namespace yet. Run a chaos experiment or Red/Blue campaign to build profiles.
+            </p>
+          ) : (
+            (data?.profiles ?? []).map((profile) => {
             const Icon = trendIcon[profile.trend]
             return (
               <div key={profile.service} className="px-5 py-4">
@@ -98,7 +103,8 @@ export function ChaosDnaPage() {
                 <p className="mt-2 text-[10px] text-muted-foreground">Last tested {profile.last_tested}</p>
               </div>
             )
-          })}
+          })
+          )}
         </div>
       </section>
     </PageShell>

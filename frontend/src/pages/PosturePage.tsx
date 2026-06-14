@@ -61,11 +61,23 @@ export function PosturePage() {
           </Button>
         }
         badge={
-          posture.data?.scanned_at ? (
-            <Badge variant="outline" className="font-mono text-[10px]">
-              {new Date(posture.data.scanned_at).toLocaleString()}
-            </Badge>
-          ) : undefined
+          <>
+            {posture.data?.live_data === false && (
+              <Badge variant="warning" className="mr-2">
+                seed data
+              </Badge>
+            )}
+            {posture.data?.live_data && (
+              <Badge variant="success" className="mr-2">
+                live cluster
+              </Badge>
+            )}
+            {posture.data?.scanned_at ? (
+              <Badge variant="outline" className="font-mono text-[10px]">
+                {new Date(posture.data.scanned_at).toLocaleString()}
+              </Badge>
+            ) : undefined}
+          </>
         }
       />
 

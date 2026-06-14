@@ -1,7 +1,8 @@
 export const queryKeys = {
   health: ['health'] as const,
-  dashboard: ['dashboard', 'stats'] as const,
-  experiments: ['experiments'] as const,
+  dashboard: (namespace: string) => ['dashboard', 'stats', namespace] as const,
+  experiments: (namespace: string) => ['experiments', namespace] as const,
+  contextTargets: ['context', 'targets'] as const,
   experiment: (id: string) => ['experiments', id] as const,
   experimentEvidence: (id: string) => ['observability', 'evidence', id] as const,
   observabilityStatus: ['observability', 'status'] as const,

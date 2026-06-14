@@ -8,14 +8,16 @@ import {
   listExperiments,
 } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
+import { useAppStore } from '@/store/appStore'
 import type { ExperimentPlan } from '@/types'
 
 const ACTIVE_STATES = new Set(['pending', 'running', 'simulating', 'aborting', 'awaiting_approval'])
 
 export function useExperiments() {
+  const namespace = useAppStore((s) => s.context.namespace)
   return useQuery({
-    queryKey: queryKeys.experiments,
-    queryFn: listExperiments,
+    queryKey: queryKeys.experiments(namespace),
+    queryFn: () => listExperiments(namespace),
     staleTime: 15_000,
   })
 }
@@ -57,11 +59,12 @@ export function useCaptureEvidence() {
 
 export function useCreateExperiment() {
   const queryClient = useQueryClient()
+  const namespace = useAppStore((s) => s.context.namespace)
   return useMutation({
     mutationFn: (plan: ExperimentPlan) => createExperiment(plan),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.experiments })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.experiments(namespace) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(namespace) })
     },
   })
 }
