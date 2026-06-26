@@ -1,6 +1,7 @@
 .PHONY: install dev dev-ui lint test run worker migrate tree lock
 
 install:
+	uv python install 3.12
 	uv sync --extra dev
 	cd frontend && npm install
 

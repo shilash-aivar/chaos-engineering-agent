@@ -59,6 +59,34 @@ chaos status
 chaos run "pod kill on checkout during load"
 ```
 
+## Python & dependencies (uv)
+
+This project uses [uv](https://docs.astral.sh/uv/) instead of `requirements.txt`. Python version and packages are pinned so you avoid mismatches like `str | None` errors on older interpreters or different dependency sets across machines.
+
+| File | Purpose |
+|------|---------|
+| `.python-version` | Pins **Python 3.12** for local dev |
+| `pyproject.toml` | Declares dependencies (`requires-python >= 3.10`) |
+| `uv.lock` | Locked, reproducible installs (commit this file) |
+| `.venv/` | Local virtualenv created by uv (gitignored) |
+
+**Use these commands** — they run inside the uv-managed `.venv`:
+
+```bash
+uv sync --extra dev    # install / update deps from uv.lock
+uv run pytest tests/   # run tests
+make install           # uv sync + npm install
+make test              # full test suite
+make dev               # API server
+make lock              # regenerate uv.lock after changing pyproject.toml
+```
+
+`make install` is the single entry point on a fresh machine — it runs `uv python install 3.12` first, so you don't need Python 3.12 preinstalled.
+
+CI uses `uv sync --frozen`, so builds fail if `uv.lock` is out of date with `pyproject.toml`.
+
+**Avoid** running bare `python`, `pip install`, or `pytest` outside uv — that can pick up the wrong system Python (e.g. 3.9) or an unmigrated global environment. Stick to `uv run …` or the `make` targets above.
+
 ## Frontend screens
 
 | Route | Purpose |
