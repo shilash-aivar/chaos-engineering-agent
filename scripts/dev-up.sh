@@ -13,9 +13,14 @@ if [ ! -f .env ]; then
   echo "    Created .env from .env.example"
 fi
 
-if command -v pip3 >/dev/null 2>&1; then
-  pip3 install -e ".[dev]" -q
-  echo "    Python deps installed"
+if command -v uv >/dev/null 2>&1; then
+  uv python install 3.12
+  uv sync --extra dev
+  echo "    Python deps installed (uv, Python 3.12)"
+else
+  echo "ERROR: uv is not installed. Install it from https://docs.astral.sh/uv/ and re-run." >&2
+  echo "    macOS: brew install uv" >&2
+  exit 1
 fi
 
 if command -v npm >/dev/null 2>&1 && [ -d frontend ]; then
@@ -33,6 +38,6 @@ Optional (no cluster):
   export CHAOS_AGENT_SIMULATE_EXECUTION=true
 
 CI gate locally:
-  python3 scripts/ci_gate.py --pr-number 42 --files src/api/routes.py --services checkout
+  uv run python scripts/ci_gate.py --pr-number 42 --files src/api/routes.py --services checkout
 
 EOF
