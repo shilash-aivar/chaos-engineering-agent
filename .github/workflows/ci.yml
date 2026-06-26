@@ -11,27 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - run: ruff check src tests
-      - run: pytest tests/unit -v
+      - run: uv sync --extra dev --frozen
+      - run: uv run ruff check src tests
+      - run: uv run pytest tests/unit -v
 
   chaos-gate:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
+      - run: uv sync --extra dev --frozen
       - name: Run chaos resilience gate
         env:
           CHAOS_AGENT_SIMULATE_EXECUTION: "true"
         run: |
-          python3 scripts/ci_gate.py \
+          uv run python scripts/ci_gate.py \
             --pr-number "${{ github.event.pull_request.number }}" \
             --no-execute \
             --files $(git diff --name-only origin/${{ github.base_ref }}...HEAD | tr '\n' ' ') \

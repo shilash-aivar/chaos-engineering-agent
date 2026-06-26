@@ -1,7 +1,8 @@
 import pytest
 
+import chaos_agent.config as cfg
+import chaos_agent.storage.database as db_mod
 from chaos_agent.config import Settings
-from chaos_agent.models import ExperimentSource, FaultExecutor
 from chaos_agent.orchestrator.engine import ExperimentEngine
 from chaos_agent.storage.database import get_session_factory, init_db
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
@@ -10,13 +11,12 @@ from chaos_agent.composer.rules import compose_from_scenario
 
 @pytest.fixture
 async def db():
-    import chaos_agent.storage.database as db_mod
+    prev_engine = db_mod._engine
+    prev_factory = db_mod._session_factory
+    prev_settings = cfg._settings
 
     db_mod._engine = None
     db_mod._session_factory = None
-
-    import chaos_agent.config as cfg
-
     cfg._settings = Settings(
         database_url="sqlite+aiosqlite:///:memory:",
         simulate_execution=True,
@@ -26,14 +26,19 @@ async def db():
     )
 
     await init_db()
-    yield
-    if db_mod._engine is not None:
-        await db_mod._engine.dispose()
+    try:
+        yield
+    finally:
+        if db_mod._engine is not None:
+            await db_mod._engine.dispose()
+        db_mod._engine = prev_engine
+        db_mod._session_factory = prev_factory
+        cfg._settings = prev_settings
 
 
 @pytest.mark.asyncio
 async def test_experiment_lifecycle_simulated(db) -> None:
-    plan, _ = asyncio.run(compose_from_scenario("pod kill on checkout", "staging"))
+    plan, _ = await compose_from_scenario("pod kill on checkout", "staging")
     factory = get_session_factory()
 
     async with factory() as session:

@@ -116,6 +116,16 @@ def test_referee_rejects_high_blast_pod_kill() -> None:
 
 @pytest.mark.asyncio
 async def test_remediation_pipeline_skips_without_evidence() -> None:
+    import chaos_agent.config as cfg
+    import chaos_agent.storage.database as db_mod
+    from chaos_agent.config import Settings
+    from chaos_agent.storage.database import init_db
+
+    db_mod._engine = None
+    db_mod._session_factory = None
+    cfg._settings = Settings(database_url="sqlite+aiosqlite:///:memory:")
+    await init_db()
+
     result = await run_remediation_pipeline("exp-does-not-exist")
     assert result.mode == "skipped"
 

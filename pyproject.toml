@@ -7,7 +7,7 @@ name = "chaos-agent"
 version = "0.1.0"
 description = "Internal AI-driven resilience platform — infra-aware chaos, Red/Blue adversarial training, K8s + AWS remediation"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Proprietary" }
 dependencies = [
     "fastapi>=0.115.0",

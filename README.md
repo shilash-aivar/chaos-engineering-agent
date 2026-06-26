@@ -37,9 +37,11 @@ chaos-engineering-agent/
 
 ## Quick start
 
+Requires [uv](https://docs.astral.sh/uv/) (Python 3.12). Dependencies are locked in `uv.lock`.
+
 ```bash
 cp .env.example .env
-make install
+make install   # uv sync --extra dev + npm install
 
 # Terminal 1 — API
 make dev
