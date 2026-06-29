@@ -119,6 +119,10 @@ async def create_experiment(plan: ExperimentPlan) -> dict:
     if should_run_async(plan):
         queued, via = dispatch_experiment(experiment_id)
         if queued:
+            async with factory() as session:
+                repo = ExperimentRepository(session)
+                await repo.add_event(experiment_id, "Dispatched async", f"via {via}")
+                await session.commit()
             return {**summary, "dispatch": via}
     await get_engine().start(experiment_id)
     return summary

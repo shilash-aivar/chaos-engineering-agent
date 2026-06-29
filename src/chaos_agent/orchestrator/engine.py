@@ -21,6 +21,7 @@ from chaos_agent.observability.capture import capture_experiment_evidence
 from chaos_agent.remediator.pipeline import run_remediation_pipeline
 from chaos_agent.observability.correlator import utcnow
 from chaos_agent.orchestrator.guards.steady_state import SteadyStateGuard
+from chaos_agent.platform.kube import kube_context_for_namespace
 from chaos_agent.storage.database import get_session_factory
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
 
@@ -100,6 +101,7 @@ class ExperimentEngine:
                     self.ebpf.simulate = True
 
             try:
+                kube_context = kube_context_for_namespace(plan.blast_radius.namespace)
                 await repo.set_state(experiment_id, ExperimentState.SIMULATING)
                 fault_target = (
                     plan.faults[0].target
@@ -144,6 +146,7 @@ class ExperimentEngine:
                             fault,
                             plan.blast_radius.namespace,
                             plan.blast_radius.max_replicas_pct,
+                            kube_context=kube_context,
                         )
                         handles.append(handle)
                         if fault_started_at is None:
@@ -176,6 +179,7 @@ class ExperimentEngine:
                             fault,
                             plan.blast_radius.namespace,
                             plan.blast_radius.max_replicas_pct,
+                            kube_context=kube_context,
                         )
                         handles.append(handle)
                         if fault_started_at is None:
@@ -228,6 +232,7 @@ class ExperimentEngine:
                     handles,
                     simulate=simulate,
                     fault_started_at=fault_started_at or row.created_at,
+                    kube_context=kube_context,
                 )
 
             except Exception as exc:
@@ -235,7 +240,7 @@ class ExperimentEngine:
                 await repo.set_state(experiment_id, ExperimentState.FAILED, error_message=str(exc))
                 await repo.add_event(experiment_id, "Experiment failed", str(exc))
                 await session.commit()
-                await self._rollback_all(handles)
+                await self._rollback_all(handles, kube_context=kube_context)
 
     async def _monitor_loop(
         self,
@@ -248,6 +253,7 @@ class ExperimentEngine:
         *,
         simulate: bool,
         fault_started_at,
+        kube_context: Optional[str] = None,
     ) -> None:
         elapsed = 0
         aborted = False
@@ -299,7 +305,7 @@ class ExperimentEngine:
         )
         await session.commit()
 
-        await self._rollback_all(handles)
+        await self._rollback_all(handles, kube_context=kube_context)
         await repo.add_event(experiment_id, "Rollback complete", "Fault resources removed")
         await session.commit()
 
@@ -331,40 +337,46 @@ class ExperimentEngine:
         if self.settings.auto_remediate_on_complete:
             asyncio.create_task(run_remediation_pipeline(experiment_id))
 
-    async def _rollback_all(self, handles: list[RollbackHandle]) -> None:
+    async def _rollback_all(self, handles: list[RollbackHandle], *, kube_context: Optional[str] = None) -> None:
         for handle in handles:
             try:
                 if handle.executor == "toxiproxy":
                     await self.toxiproxy.rollback(handle)
                 elif handle.executor == "k6":
-                    await self.k6.rollback(handle)
+                    await self.k6.rollback(handle, kube_context=kube_context)
                 elif handle.executor == "aws_fis":
                     await self.aws_fis.rollback(handle)
                 elif handle.executor == "ebpf":
                     await self.ebpf.rollback(handle)
                 else:
-                    await self.chaos_mesh.rollback(handle)
+                    await self.chaos_mesh.rollback(handle, kube_context=kube_context)
             except Exception as exc:
                 logger.warning("rollback_failed", extra={"error": str(exc)})
 
         if handles:
             ttl = self.settings.rollback_ttl_seconds
-            asyncio.create_task(self._ttl_safety_net(handles, ttl))
+            asyncio.create_task(self._ttl_safety_net(handles, ttl, kube_context=kube_context))
 
-    async def _ttl_safety_net(self, handles: list[RollbackHandle], ttl_seconds: int) -> None:
+    async def _ttl_safety_net(
+        self,
+        handles: list[RollbackHandle],
+        ttl_seconds: int,
+        *,
+        kube_context: Optional[str] = None,
+    ) -> None:
         await asyncio.sleep(ttl_seconds)
         for handle in handles:
             try:
                 if handle.executor == "toxiproxy":
                     await self.toxiproxy.rollback(handle)
                 elif handle.executor == "k6":
-                    await self.k6.rollback(handle)
+                    await self.k6.rollback(handle, kube_context=kube_context)
                 elif handle.executor == "aws_fis":
                     await self.aws_fis.rollback(handle)
                 elif handle.executor == "ebpf":
                     await self.ebpf.rollback(handle)
                 else:
-                    await self.chaos_mesh.rollback(handle)
+                    await self.chaos_mesh.rollback(handle, kube_context=kube_context)
             except Exception as exc:
                 logger.warning("ttl_rollback_failed", extra={"error": str(exc)})
 

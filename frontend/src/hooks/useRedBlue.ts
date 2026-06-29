@@ -52,7 +52,7 @@ export function useStartCampaign() {
     }) => startCampaign(name, options),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.campaigns })
-      void qc.invalidateQueries({ queryKey: queryKeys.dashboard })
+      void qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }

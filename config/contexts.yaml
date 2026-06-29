@@ -1,6 +1,7 @@
 contexts:
   - id: eks-staging
     cluster: eks-staging
+    kube_context: eks-staging
     namespace: staging
     environment: staging
     aws_account: "111122223333"
@@ -8,6 +9,7 @@ contexts:
     label: eks-staging / staging
   - id: eks-staging-platform
     cluster: eks-staging
+    kube_context: eks-staging
     namespace: platform
     environment: staging
     aws_account: "111122223333"
@@ -15,6 +17,7 @@ contexts:
     label: eks-staging / platform
   - id: eks-prod
     cluster: eks-prod
+    kube_context: eks-prod
     namespace: production
     environment: production
     aws_account: "111122223333"

@@ -10,7 +10,9 @@ from chaos_agent.blue.agent import suggest_fixes
 from chaos_agent.config import Settings
 from chaos_agent.context.analyzer import analyze_context
 from chaos_agent.context.ingest import ingest_context
+from chaos_agent.context.parsers.manifests import parse_manifest
 from chaos_agent.context.parsers.terraform import parse_terraform
+from chaos_agent.context.sources.files import classify_files
 from chaos_agent.context.types import ContextGap, PracticeLevel
 from chaos_agent.storage.database import init_db
 
@@ -119,3 +121,67 @@ def test_context_ingest_api(client: TestClient) -> None:
     analysis_resp = client.get("/context/analysis", params={"namespace": "staging"})
     assert analysis_resp.status_code == 200
     assert analysis_resp.json()["snapshot_id"] == body["snapshot"]["id"]
+    assert "understanding" in analysis_resp.json()
+
+
+def test_classify_files_buckets_by_type() -> None:
+    classified = classify_files(
+        {
+            "infra/main.tf": 'resource "aws_sqs_queue" "q" { name = "x" }',
+            "README.md": "# service\nMulti-AZ database",
+            "k8s/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nreadinessProbe:",
+            "src/app.py": "client = httpx.AsyncClient()",
+        },
+    )
+    assert "infra/main.tf" in classified.terraform_files
+    assert classified.readme_content is not None
+    assert "k8s/deployment.yaml" in classified.manifest_files
+    assert "src/app.py" in classified.code_files
+
+
+def test_manifest_parser_extracts_probes() -> None:
+    hints = parse_manifest("apiVersion: apps/v1\nkind: Deployment\nreadinessProbe:\n  httpGet:", "deploy.yaml")
+    assert any("Readiness probe" in h for h in hints)
+
+
+def test_context_snapshots_list_and_delete(client: TestClient) -> None:
+    client.post(
+        "/context/ingest",
+        json={
+            "repo_name": "svc-a",
+            "namespace": "staging",
+            "terraform_files": {"infra/rds.tf": SAMPLE_TF},
+        },
+    )
+    listed = client.get("/context/snapshots", params={"namespace": "staging"})
+    assert listed.status_code == 200
+    snapshots = listed.json()["snapshots"]
+    assert len(snapshots) >= 1
+    snap_id = snapshots[0]["id"]
+
+    understanding = client.get("/context/understanding", params={"namespace": "staging", "snapshot_id": snap_id})
+    assert understanding.status_code == 200
+    assert "alignment" in understanding.json()["understanding"]
+
+    deleted = client.delete(f"/context/snapshots/{snap_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+
+
+def test_ingest_raw_files(client: TestClient) -> None:
+    response = client.post(
+        "/context/ingest",
+        json={
+            "repo_name": "raw-upload",
+            "namespace": "staging",
+            "raw_files": {
+                "infra/rds.tf": SAMPLE_TF,
+                "README.md": SAMPLE_README,
+                "k8s/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: checkout",
+            },
+        },
+    )
+    assert response.status_code == 200
+    summary = response.json()["analysis"]["declared_summary"]
+    assert summary["terraform_resources"] >= 1
+    assert summary["manifest_hints"] >= 1

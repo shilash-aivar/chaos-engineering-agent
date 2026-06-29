@@ -16,6 +16,7 @@ from chaos_agent.blue.service import (
 from chaos_agent.composer.premortem import generate_pre_mortem
 from chaos_agent.composer.service import compose_full, compose_scenario
 from chaos_agent.config import get_settings
+from chaos_agent.context.agent.loop import run_context_agent
 from chaos_agent.context.types import ContextGap
 from chaos_agent.llm.client import get_llm_client
 from chaos_agent.models import ExperimentPlan
@@ -56,6 +57,7 @@ async def agent_status() -> dict:
             "red": "llm+rules" if llm.available else "rules",
             "blue": "llm+rules" if llm.available else "rules",
             "referee": "deterministic",
+            "context": "llm+tools" if llm.available else "tools",
         },
         "referee": ref,
     }
@@ -117,6 +119,24 @@ class RefereeExportRequest(BaseModel):
 class PremortemRequest(BaseModel):
     plan: ExperimentPlan
     namespace: str = "staging"
+
+
+class ContextUnderstandRequest(BaseModel):
+    problem_statement: str = ""
+    namespace: str = "staging"
+    context_id: Optional[str] = None
+    max_iterations: int = 8
+
+
+@router.post("/context/understand")
+async def context_understand(body: ContextUnderstandRequest) -> dict[str, Any]:
+    """Run the context agent loop: tools → LLM reasoning → infrastructure summary."""
+    return await run_context_agent(
+        problem_statement=body.problem_statement,
+        namespace=body.namespace,
+        context_id=body.context_id,
+        max_iterations=body.max_iterations,
+    )
 
 
 @router.post("/composer/compose-full")

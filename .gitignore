@@ -32,3 +32,4 @@ deploy/kind/kubeconfig
 # Secrets
 .env.local
 credentials.json
+config/connectors.yaml

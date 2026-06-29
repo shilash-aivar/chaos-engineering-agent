@@ -16,10 +16,16 @@ _COLLECTOR_TIMEOUT_SECONDS = 4
 
 
 class SnapshotBuilder:
-    def __init__(self, namespace: str = "staging") -> None:
+    def __init__(
+        self,
+        namespace: str = "staging",
+        kube_context: str | None = None,
+        aws_profile: str | None = None,
+        aws_region: str | None = None,
+    ) -> None:
         self.namespace = namespace
-        self.k8s = K8sCollector(namespace)
-        self.aws = AwsCollector()
+        self.k8s = K8sCollector(namespace, kube_context=kube_context)
+        self.aws = AwsCollector(profile=aws_profile, region=aws_region, namespace=namespace)
         self.app = AppCollector(namespace)
         self.deps = DependencyCollector(namespace)
         self.obs = ObservabilityCollector()

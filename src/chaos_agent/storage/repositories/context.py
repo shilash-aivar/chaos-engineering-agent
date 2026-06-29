@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chaos_agent.blue.agent import suggest_fixes
 from chaos_agent.context.analyzer import analyze_context, sast_findings_to_gaps
 from chaos_agent.context.types import ContextAnalysisResult, ContextSnapshot, DeclaredContext
+from chaos_agent.context.understanding import understanding_from_snapshot
+from chaos_agent.platform.target_context_service import snapshot_builder_for_namespace
 from chaos_agent.security.scanners.sast import run_sast_scan
 from chaos_agent.storage.orm import ContextSnapshotRow
 
@@ -54,6 +56,23 @@ class ContextRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_snapshots(self, namespace: str = "staging", limit: int = 20) -> list[ContextSnapshotRow]:
+        result = await self.session.execute(
+            select(ContextSnapshotRow)
+            .where(ContextSnapshotRow.namespace == namespace)
+            .order_by(ContextSnapshotRow.ingested_at.desc())
+            .limit(limit),
+        )
+        return list(result.scalars().all())
+
+    async def delete(self, snapshot_id: str) -> bool:
+        row = await self.get_by_id(snapshot_id)
+        if row is None:
+            return False
+        await self.session.delete(row)
+        await self.session.commit()
+        return True
+
     async def run_analysis(self, row: ContextSnapshotRow) -> ContextAnalysisResult:
         declared = DeclaredContext.model_validate_json(row.declared_json)
         snapshot = ContextSnapshot(
@@ -79,7 +98,11 @@ class ContextRepository:
             "terraform_resources": len(declared.terraform_resources),
             "documents": len(declared.documents),
             "code_hints": len(declared.code_hints),
+            "manifest_hints": len(declared.manifest_hints),
         }
+
+        infra = await snapshot_builder_for_namespace(row.namespace).build()
+        understanding = understanding_from_snapshot(snapshot, infra)
 
         result = ContextAnalysisResult(
             snapshot_id=row.id,
@@ -91,6 +114,7 @@ class ContextRepository:
             posture_summary=posture_summary,
             sast_findings=sast_dicts,
             sast_simulated=sast.simulated,
+            understanding=understanding,
         )
 
         row.analysis_json = result.model_dump_json()

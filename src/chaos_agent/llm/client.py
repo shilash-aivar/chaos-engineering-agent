@@ -61,6 +61,44 @@ class LLMClient:
             logger.warning("llm_complete_failed", extra={"error": str(exc)})
             return None
 
+    async def complete_with_tools(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_tokens: int = 4096,
+    ) -> Optional[dict[str, Any]]:
+        """Run one Messages API turn with tool definitions. Returns normalized content blocks."""
+        if not self.available:
+            return None
+        try:
+            client = self._get_client()
+            message = await client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                tools=tools,
+            )
+            content = []
+            for block in message.content:
+                if block.type == "text":
+                    content.append({"type": "text", "text": block.text})
+                elif block.type == "tool_use":
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        },
+                    )
+            return {"content": content, "stop_reason": message.stop_reason}
+        except Exception as exc:
+            logger.warning("llm_tools_failed", extra={"error": str(exc)})
+            return None
+
 
 def _parse_json_object(text: str) -> Optional[dict[str, Any]]:
     stripped = text.strip()

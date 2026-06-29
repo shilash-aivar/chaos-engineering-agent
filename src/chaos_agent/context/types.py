@@ -41,8 +41,10 @@ class DeclaredContext(BaseModel):
     terraform_resources: list[TerraformResource] = Field(default_factory=list)
     documents: list[DeclaredDocument] = Field(default_factory=list)
     code_hints: list[str] = Field(default_factory=list)
+    manifest_hints: list[str] = Field(default_factory=list)
     terraform_sources: dict[str, str] = Field(default_factory=dict)
     code_sources: dict[str, str] = Field(default_factory=dict)
+    manifest_sources: dict[str, str] = Field(default_factory=dict)
 
 
 class ContextSnapshot(BaseModel):
@@ -87,3 +89,4 @@ class ContextAnalysisResult(BaseModel):
     posture_summary: dict[str, int]
     sast_findings: list[dict[str, Any]] = Field(default_factory=list)
     sast_simulated: bool = False
+    understanding: dict[str, Any] = Field(default_factory=dict)

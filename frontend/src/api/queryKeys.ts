@@ -12,7 +12,13 @@ export const queryKeys = {
   campaigns: ['red-blue', 'campaigns'] as const,
   campaign: (id: string) => ['red-blue', 'campaigns', id] as const,
   contextSnapshot: (namespace: string) => ['context', 'snapshot', namespace] as const,
+  contextSnapshots: (namespace: string) => ['context', 'snapshots', namespace] as const,
   contextAnalysis: (namespace: string) => ['context', 'analysis', namespace] as const,
+  contextAnalysisById: (id: string) => ['context', 'analysis', 'id', id] as const,
+  contextUnderstanding: (namespace: string, snapshotId?: string) =>
+    ['context', 'understanding', namespace, snapshotId ?? 'latest'] as const,
+  awsProbe: (namespace: string, contextId?: string) =>
+    ['context', 'aws-probe', namespace, contextId ?? 'default'] as const,
   attackFrameworks: ['red-blue', 'frameworks'] as const,
   remediationFindings: ['remediation', 'findings'] as const,
   experimentRemediation: (id: string) => ['remediation', 'experiments', id] as const,
@@ -23,6 +29,7 @@ export const queryKeys = {
   policyRules: ['policies', 'posture-rules'] as const,
   policyYaml: ['policies', 'yaml'] as const,
   integrations: ['integrations'] as const,
+  connectorConfig: (id: string) => ['integrations', id, 'config'] as const,
   chaosDna: (namespace: string) => ['chaos-dna', namespace] as const,
   loadTests: ['load-tests'] as const,
   refereeScoring: ['referee', 'scoring'] as const,

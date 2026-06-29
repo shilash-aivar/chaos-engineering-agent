@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getChaosDna,
+  getConnectorConfig,
   getFreezeCalendar,
   getInfrastructure,
   getIntegrations,
@@ -13,6 +14,7 @@ import {
   getRefereeScoring,
   getRegressionSuites,
   getTwinAnalysis,
+  saveConnectorConfig,
   savePolicyYaml,
   testIntegration,
 } from '@/api/client'
@@ -90,7 +92,34 @@ export function usePluginsEbpf() {
 }
 
 export function useTestIntegration() {
-  return useMutation({ mutationFn: testIntegration })
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: testIntegration,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.integrations })
+    },
+  })
+}
+
+export function useConnectorConfig(integrationId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.connectorConfig(integrationId ?? ''),
+    queryFn: () => getConnectorConfig(integrationId!),
+    enabled: Boolean(integrationId),
+  })
+}
+
+export function useSaveConnectorConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }: { id: string; values: Record<string, string> }) =>
+      saveConnectorConfig(id, values),
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.integrations })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectorConfig(vars.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentStatus })
+    },
+  })
 }
 
 export function useSavePolicyYaml() {

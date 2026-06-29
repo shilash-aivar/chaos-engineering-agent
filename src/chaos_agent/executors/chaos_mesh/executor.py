@@ -19,19 +19,13 @@ CHAOS_VERSION = "v1alpha1"
 class ChaosMeshExecutor:
     def __init__(self, simulate: Optional[bool] = None) -> None:
         self.simulate = simulate if simulate is not None else get_settings().simulate_execution
-        self._api: Optional[Any] = None
 
-    def _custom_api(self) -> Any:
-        if self._api is not None:
-            return self._api
-        from kubernetes import client, config
+    def _custom_api(self, kube_context: str | None = None) -> Any:
+        from kubernetes import client
+        from chaos_agent.platform.kube import load_kubernetes_config
 
-        try:
-            config.load_kube_config()
-        except Exception:
-            config.load_incluster_config()
-        self._api = client.CustomObjectsApi()
-        return self._api
+        load_kubernetes_config(kube_context)
+        return client.CustomObjectsApi()
 
     def _resource_name(self, experiment_id: str, fault_type: str) -> str:
         safe = experiment_id.replace("_", "-").lower()[:40]
@@ -90,6 +84,8 @@ class ChaosMeshExecutor:
         fault: Fault,
         namespace: str,
         max_replica_percent: float,
+        *,
+        kube_context: str | None = None,
     ) -> RollbackHandle:
         target = fault.target or "app"
         duration = fault.params.get("duration", "120s")
@@ -137,7 +133,7 @@ class ChaosMeshExecutor:
 
         plural = "podchaos" if kind == "PodChaos" else "networkchaos"
         await asyncio.to_thread(
-            self._custom_api().create_namespaced_custom_object,
+            self._custom_api(kube_context).create_namespaced_custom_object,
             CHAOS_GROUP,
             CHAOS_VERSION,
             namespace,
@@ -146,12 +142,12 @@ class ChaosMeshExecutor:
         )
         return handle
 
-    async def rollback(self, handle: RollbackHandle) -> None:
+    async def rollback(self, handle: RollbackHandle, *, kube_context: str | None = None) -> None:
         if handle.simulated:
             logger.info("simulate_chaos_rollback", extra={"experiment_id": handle.experiment_id})
             return
 
-        api = self._custom_api()
+        api = self._custom_api(kube_context)
         for resource in handle.resources:
             plural = "podchaos" if resource.kind == "PodChaos" else "networkchaos"
             try:

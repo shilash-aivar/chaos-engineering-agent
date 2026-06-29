@@ -133,25 +133,58 @@ def _declared_vs_observed_gaps(
         r.type == "aws_db_instance" and r.attributes.get("multi_az") is True
         for r in declared.terraform_resources
     )
-    live_single_az = any(
-        r.get("id") == "payments-db" and not r.get("multi_az")
+    live_single_az = [
+        r.get("id", "unknown")
         for r in snapshot.aws.get("rds", [])
-    )
+        if isinstance(r, dict) and not r.get("multi_az")
+    ]
     if ha_claims and live_single_az and not rds_multi:
-        gid += 1
-        extra.append(
-            ContextGap(
-                id=f"ctx-{gid:03d}",
-                level=PracticeLevel.HA,
-                scope="aws",
-                severity="critical",
-                service="payments-db",
-                rule="declared-ha-mismatch",
-                message="Docs claim HA but Terraform/live RDS is single-AZ",
-                declared_evidence=[c for d in declared.documents for c in d.claims if "ha" in c.lower() or "multi" in c.lower()],
-                observed_evidence=["Live snapshot: payments-db multi_az=false"],
-            ),
+        for rds_id in live_single_az:
+            gid += 1
+            extra.append(
+                ContextGap(
+                    id=f"ctx-{gid:03d}",
+                    level=PracticeLevel.HA,
+                    scope="aws",
+                    severity="critical",
+                    service=rds_id,
+                    rule="declared-ha-mismatch",
+                    message=f"Docs claim HA but Terraform/live RDS {rds_id} is single-AZ",
+                    declared_evidence=[
+                        c for d in declared.documents for c in d.claims if "ha" in c.lower() or "multi" in c.lower()
+                    ],
+                    observed_evidence=[f"Live snapshot: {rds_id} multi_az=false"],
+                ),
+            )
+
+    # Generic Terraform vs live RDS alignment
+    for res in declared.terraform_resources:
+        if res.type != "aws_db_instance":
+            continue
+        identifier = str(res.attributes.get("identifier", res.name.replace("_", "-")))
+        live = next(
+            (r for r in snapshot.aws.get("rds", []) if isinstance(r, dict) and r.get("id") == identifier),
+            None,
         )
+        if live is None:
+            continue
+        declared_multi = res.attributes.get("multi_az") is True
+        live_multi = bool(live.get("multi_az"))
+        if declared_multi != live_multi:
+            gid += 1
+            extra.append(
+                ContextGap(
+                    id=f"ctx-{gid:03d}",
+                    level=PracticeLevel.DB,
+                    scope="aws",
+                    severity="high" if not live_multi else "medium",
+                    service=identifier,
+                    rule="terraform-rds-drift",
+                    message=f"Terraform declares multi_az={declared_multi} but live RDS is multi_az={live_multi}",
+                    declared_evidence=[f"Terraform {res.name}: multi_az={declared_multi} ({res.source_file})"],
+                    observed_evidence=[f"Live snapshot: {identifier} multi_az={live_multi}"],
+                ),
+            )
 
     slo_claims = any("slo" in c.lower() or "error budget" in c.lower() for d in declared.documents for c in d.claims)
     prom_ok = any(o.name == "prometheus" and o.status == "ok" for o in snapshot.observability)

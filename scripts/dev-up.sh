@@ -33,6 +33,7 @@ cat <<'EOF'
 Next steps:
   Terminal 1: make dev          # API on :8000
   Terminal 2: make dev-ui       # UI on :5173
+  Optional: make worker         # Celery worker (when CHAOS_AGENT_USE_CELERY=true)
 
 Optional (no cluster):
   export CHAOS_AGENT_SIMULATE_EXECUTION=true

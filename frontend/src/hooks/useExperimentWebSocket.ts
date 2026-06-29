@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/api/queryKeys'
+import { wsAuthQuery } from '@/lib/apiAuth'
 import type { ExperimentDetail } from '@/types'
 
 const ACTIVE_STATES = new Set(['pending', 'running', 'simulating', 'aborting', 'awaiting_approval'])
 
 function wsUrl(experimentId: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${window.location.host}/api/ws/experiments/${experimentId}`
+  return `${proto}://${window.location.host}/api/ws/experiments/${experimentId}${wsAuthQuery()}`
 }
 
 export function useExperimentWebSocket(experimentId: string | undefined, enabled = true) {

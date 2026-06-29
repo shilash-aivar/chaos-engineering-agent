@@ -32,7 +32,7 @@ export function useRunRemediation() {
     mutationFn: runRemediation,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.remediationFindings })
-      void qc.invalidateQueries({ queryKey: queryKeys.experiments })
+      void qc.invalidateQueries({ queryKey: ['experiments'] })
     },
   })
 }
@@ -44,7 +44,7 @@ export function useVerifyFinding() {
       verifyRemediationFinding(experimentId, findingId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.remediationFindings })
-      void qc.invalidateQueries({ queryKey: queryKeys.experiments })
+      void qc.invalidateQueries({ queryKey: ['experiments'] })
     },
   })
 }
@@ -62,7 +62,7 @@ export function useApproveExperiment() {
     mutationFn: approveExperiment,
     onSuccess: (_data, experimentId) => {
       void qc.invalidateQueries({ queryKey: queryKeys.experiment(experimentId) })
-      void qc.invalidateQueries({ queryKey: queryKeys.experiments })
+      void qc.invalidateQueries({ queryKey: ['experiments'] })
     },
   })
 }

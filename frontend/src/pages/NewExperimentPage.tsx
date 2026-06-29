@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, Play, ShieldCheck, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { composeFullScenario } from '@/api/client'
 import { useAgentStatus } from '@/hooks/useAgentStatus'
-import { useCreateExperiment } from '@/hooks/useExperiments'
+import { useCreateExperiment, useExperiments } from '@/hooks/useExperiments'
 import { PageHeader, PageShell } from '@/components/layout/PageChrome'
 import { useAppStore } from '@/store/appStore'
 import type { ExperimentPlan } from '@/types'
@@ -20,12 +20,16 @@ const examples = [
 
 export function NewExperimentPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const priorFromUrl = searchParams.get('prior') ?? ''
   const namespace = useAppStore((s) => s.context.namespace)
   const environment = useAppStore((s) => s.context.environment)
   const createMutation = useCreateExperiment()
   const agentStatus = useAgentStatus()
+  const recentExperiments = useExperiments()
   const [scenario, setScenario] = useState('')
-  const [useFeedback, setUseFeedback] = useState(true)
+  const [priorExperimentId, setPriorExperimentId] = useState(priorFromUrl)
+  const [useFeedback, setUseFeedback] = useState(!priorFromUrl)
   const [plan, setPlan] = useState<ExperimentPlan | null>(null)
   const [summary, setSummary] = useState('')
   const [preMortem, setPreMortem] = useState<Record<string, unknown> | null>(null)
@@ -36,6 +40,16 @@ export function NewExperimentPage() {
   const [composing, setComposing] = useState(false)
 
   const llm = agentStatus.data
+  const completedRuns = (recentExperiments.data ?? []).filter((e) =>
+    ['complete', 'failed'].includes(e.state),
+  )
+
+  useEffect(() => {
+    if (priorFromUrl) {
+      setPriorExperimentId(priorFromUrl)
+      setUseFeedback(false)
+    }
+  }, [priorFromUrl])
 
   const handleCompose = async () => {
     if (!scenario.trim()) return
@@ -43,7 +57,8 @@ export function NewExperimentPage() {
     try {
       const res = await composeFullScenario(scenario.trim(), namespace, {
         environment,
-        use_latest_feedback: useFeedback,
+        use_latest_feedback: useFeedback && !priorExperimentId,
+        prior_experiment_id: priorExperimentId || undefined,
       })
       setPlan(res.plan)
       setSummary(res.summary)
@@ -107,14 +122,35 @@ export function NewExperimentPage() {
               onChange={(e) => setScenario(e.target.value)}
               className="min-h-[140px] resize-none bg-input/50 font-sans text-sm"
             />
+            <div className="space-y-2">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Learn from prior experiment
+              </label>
+              <select
+                value={priorExperimentId}
+                onChange={(e) => {
+                  setPriorExperimentId(e.target.value)
+                  if (e.target.value) setUseFeedback(false)
+                }}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+              >
+                <option value="">None — optional</option>
+                {completedRuns.map((exp) => (
+                  <option key={exp.id} value={exp.id}>
+                    {exp.name} ({exp.state}) · {exp.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={useFeedback}
+                disabled={Boolean(priorExperimentId)}
                 onChange={(e) => setUseFeedback(e.target.checked)}
                 className="rounded border-border"
               />
-              Learn from latest experiment in this namespace
+              Or learn from latest experiment in this namespace
             </label>
             <div className="flex flex-col gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

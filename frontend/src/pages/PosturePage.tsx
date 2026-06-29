@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Cloud, Database, GitBranch, Loader2, RefreshCw, Server } from 'lucide-react'
-import { demoBootstrapActions } from '@/demo/mockData'
+import { useBootstrapStatus } from '@/hooks/useBootstrap'
 import { usePostureScan } from '@/hooks/usePosture'
 import { PageHeader, PageShell, StatCard } from '@/components/layout/PageChrome'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ const scopeConfig: {
 
 export function PosturePage() {
   const { posture, snapshot, refetchAll, isLoading, isRefetching } = usePostureScan()
+  const bootstrap = useBootstrapStatus()
   const gaps = posture.data?.gaps ?? []
   const summary = posture.data?.summary
   const snap = snapshot.data
@@ -152,13 +153,13 @@ export function PosturePage() {
             </p>
           </div>
           <Badge variant="outline" className="text-[10px]">
-            Phase 2 preview
+            {bootstrap.data?.live_data ? 'live detectors' : 'seed snapshot'}
           </Badge>
         </div>
         <div className="divide-y divide-border">
-          {demoBootstrapActions.map((action) => (
+          {(bootstrap.data?.actions ?? []).map((action) => (
             <div
-              key={action.action}
+              key={action.id}
               className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"
             >
               <div>
@@ -178,12 +179,15 @@ export function PosturePage() {
                 >
                   {action.status.replace('_', ' ')}
                 </Badge>
-                <Button variant="outline" size="sm" disabled>
+                <Button variant="outline" size="sm" disabled={!action.mutable}>
                   {action.status === 'done' ? 'Done' : 'Apply'}
                 </Button>
               </div>
             </div>
           ))}
+          {bootstrap.isLoading && (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Loading bootstrap status…</p>
+          )}
         </div>
       </section>
 

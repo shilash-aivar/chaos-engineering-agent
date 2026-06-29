@@ -1,0 +1,21 @@
+connectors:
+  kubernetes:
+    kube_context: eks-staging
+    kubeconfig_path: ~/.kube/config
+  aws:
+    profile: default
+    region: us-east-1
+  prometheus:
+    url: http://localhost:9090
+  grafana:
+    url: http://localhost:3000
+  loki:
+    url: http://localhost:3100
+  tempo:
+    url: http://localhost:3200
+  github:
+    org: my-org
+    repo: my-repo
+    default_branch: main
+  slack:
+    approval_channel: "#chaos-agent-approvals"

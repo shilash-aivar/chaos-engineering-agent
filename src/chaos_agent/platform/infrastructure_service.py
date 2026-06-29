@@ -7,10 +7,11 @@ from typing import Any
 from chaos_agent.graph.provenance import snapshot_is_live, snapshot_provenance
 from chaos_agent.graph.snapshot import SnapshotBuilder
 from chaos_agent.graph.types import SnapshotContext
+from chaos_agent.platform.target_context_service import snapshot_builder_for_namespace
 
 
 async def get_infrastructure_rings(namespace: str = "staging") -> dict[str, Any]:
-    builder = SnapshotBuilder(namespace)
+    builder = snapshot_builder_for_namespace(namespace)
     snapshot = await builder.build(SnapshotContext(namespace=namespace))
 
     rings: dict[str, list[dict[str, str]]] = {

@@ -34,7 +34,7 @@ export interface ExperimentPlan {
   infra_evidence: string[]
   blast_radius: { max_replicas_pct: number; namespace: string; environment: string }
   watch_metrics: string[]
-  rollback: { type: string; ttl_seconds: number }
+  rollback: { type: string; ttl_seconds?: number }
 }
 
 export interface ExperimentDetail extends ExperimentSummary {
@@ -181,6 +181,85 @@ export interface ContextAnalysisResult {
   posture_summary: Record<string, number>
   sast_findings?: Record<string, unknown>[]
   sast_simulated?: boolean
+  understanding?: ContextUnderstanding
+}
+
+export interface ContextSnapshotSummary {
+  id: string
+  repo_name: string
+  namespace: string
+  ingested_at: string
+  has_analysis: boolean
+}
+
+export interface ContextUnderstanding {
+  declared: {
+    terraform_resource_types: Record<string, number>
+    terraform_file_count: number
+    document_count: number
+    manifest_file_count: number
+    code_file_count: number
+    claims: string[]
+    code_hints: string[]
+    manifest_hints: string[]
+  }
+  observed: {
+    applications: string[]
+    dependencies: string[]
+    rds_instances: string[]
+    sqs_queues?: string[]
+    load_balancers?: string[]
+    elasticache?: string[]
+    aws_source?: string
+    aws_region?: string
+    aws_account_id?: string
+    observability: { name: string; status: string }[]
+    captured_at?: string
+  }
+  alignment: {
+    matched_resources: string[]
+    declared_not_observed: string[]
+    observed_not_declared: string[]
+  }
+}
+
+export interface AwsProbeResult {
+  source: string
+  region?: string
+  profile?: string
+  account_id?: string
+  expected_account?: string
+  account_match?: boolean | null
+  fallback_reason?: string
+  counts: {
+    rds: number
+    load_balancers: number
+    sqs_queues: number
+    elasticache: number
+  }
+  rds: Array<{ id: string; multi_az: boolean; engine?: string }>
+  sqs_queues: Array<{ name: string; dlq: boolean }>
+}
+
+export interface ContextAgentResult {
+  mode: 'llm' | 'rules'
+  iterations: number
+  problem_statement: string
+  namespace: string
+  target_label: string
+  summary: string
+  infrastructure_overview: string
+  problem_framing: string
+  top_risks: string[]
+  recommended_chaos_focus: string[]
+  confidence: 'high' | 'medium' | 'low'
+  data_gaps: string[]
+  tool_trace: Array<{
+    tool: string
+    input?: Record<string, unknown>
+    iteration: number
+    result_preview?: string
+  }>
 }
 
 export interface ContextIngestResponse {
@@ -378,10 +457,28 @@ export interface SafetyPolicy {
 export interface IntegrationConfig {
   id: string
   name: string
-  type: 'slack' | 'github' | 'pagerduty' | 'grafana' | 'tempo' | 'prometheus'
+  type: 'slack' | 'github' | 'pagerduty' | 'grafana' | 'tempo' | 'prometheus' | 'loki' | 'anthropic' | 'kubernetes' | 'aws'
   status: 'connected' | 'disconnected' | 'planned'
   detail: string
   events: string[]
+  configurable?: boolean
+  config_keys?: string[]
+}
+
+export interface ConnectorField {
+  key: string
+  label: string
+  type: 'text' | 'url' | 'password'
+  placeholder?: string
+  secret?: boolean
+}
+
+export interface ConnectorConfigResponse {
+  id: string
+  fields: ConnectorField[]
+  values: Record<string, string | boolean>
+  source: 'console' | 'environment'
+  editable: boolean
 }
 
 export interface RegressionSuite {

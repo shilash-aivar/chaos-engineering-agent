@@ -12,13 +12,11 @@ from chaos_agent.executors.base import AppliedResource
 logger = logging.getLogger(__name__)
 
 
-def _k8s_batch_api() -> Any:
-    from kubernetes import client, config
+def _k8s_batch_api(kube_context: str | None = None) -> Any:
+    from kubernetes import client
+    from chaos_agent.platform.kube import load_kubernetes_config
 
-    try:
-        config.load_kube_config()
-    except Exception:
-        config.load_incluster_config()
+    load_kubernetes_config(kube_context)
     return client.BatchV1Api(), client.CoreV1Api()
 
 
@@ -29,6 +27,7 @@ async def launch_k6_job(
     *,
     vus: int,
     duration: str,
+    kube_context: str | None = None,
 ) -> tuple[bool, list[AppliedResource]]:
     settings = get_settings()
     safe_id = experiment_id.replace("_", "-").lower()[:20]
@@ -36,7 +35,7 @@ async def launch_k6_job(
     cm_name = f"k6-script-{safe_id}"[:63]
 
     def _create() -> None:
-        batch, core = _k8s_batch_api()
+        batch, core = _k8s_batch_api(kube_context)
         core.create_namespaced_config_map(
             namespace=namespace,
             body={
@@ -93,9 +92,15 @@ async def launch_k6_job(
         return False, []
 
 
-async def delete_k6_job(namespace: str, job_name: str, cm_name: str) -> None:
+async def delete_k6_job(
+    namespace: str,
+    job_name: str,
+    cm_name: str,
+    *,
+    kube_context: str | None = None,
+) -> None:
     def _delete() -> None:
-        batch, core = _k8s_batch_api()
+        batch, core = _k8s_batch_api(kube_context)
         try:
             batch.delete_namespaced_job(name=job_name, namespace=namespace, propagation_policy="Background")
         except Exception:

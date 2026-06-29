@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class K8sCollector:
-    def __init__(self, namespace: str = "staging") -> None:
+    def __init__(self, namespace: str = "staging", kube_context: str | None = None) -> None:
         self.namespace = namespace
+        self.kube_context = kube_context
 
     def _seed(self) -> dict[str, Any]:
         return {
@@ -29,15 +29,10 @@ class K8sCollector:
         }
 
     def _collect_sync(self) -> dict[str, Any]:
-        from kubernetes import client, config
-        from kubernetes.config.config_exception import ConfigException
+        from kubernetes import client
+        from chaos_agent.platform.kube import load_kubernetes_config
 
-        try:
-            config.load_incluster_config()
-        except ConfigException:
-            if not os.environ.get("KUBECONFIG") and not os.path.exists(os.path.expanduser("~/.kube/config")):
-                raise RuntimeError("no kubeconfig")
-            config.load_kube_config()
+        load_kubernetes_config(self.kube_context)
 
         apps = client.AppsV1Api()
         core = client.CoreV1Api()

@@ -14,6 +14,7 @@ from chaos_agent.api.middleware import (
 )
 from chaos_agent.api.routes import (
     agents,
+    bootstrap,
     chaos_dna,
     ci_gate,
     context,
@@ -33,11 +34,14 @@ from chaos_agent.api.routes import (
     ws,
 )
 from chaos_agent.config import get_settings
+from chaos_agent.platform.connector_store import apply_connectors_to_settings, ensure_example_file
 from chaos_agent.storage.database import init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_example_file()
+    apply_connectors_to_settings()
     await init_db()
     yield
 
@@ -69,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(experiments.router, prefix="/experiments", tags=["experiments"])
     app.include_router(snapshot.router, prefix="/snapshot", tags=["snapshot"])
     app.include_router(posture.router, prefix="/posture", tags=["posture"])
+    app.include_router(bootstrap.router, prefix="/bootstrap", tags=["bootstrap"])
     app.include_router(context.router, prefix="/context", tags=["context"])
     app.include_router(red_blue.router, prefix="/red-blue", tags=["red-blue"])
     app.include_router(ci_gate.router, prefix="/ci-gate", tags=["ci-gate"])

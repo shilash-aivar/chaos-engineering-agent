@@ -23,6 +23,8 @@ class K6Executor:
         fault: Fault,
         namespace: str,
         max_replica_percent: float,
+        *,
+        kube_context: str | None = None,
     ) -> RollbackHandle:
         vus = int(fault.params.get("vus", 30))
         duration = fault.params.get("duration", "5m")
@@ -37,6 +39,7 @@ class K6Executor:
                 script,
                 vus=vus,
                 duration=duration,
+                kube_context=kube_context,
             )
             if not ok:
                 simulated = True
@@ -59,12 +62,12 @@ class K6Executor:
             simulated=simulated,
         )
 
-    async def rollback(self, handle: RollbackHandle) -> None:
+    async def rollback(self, handle: RollbackHandle, *, kube_context: str | None = None) -> None:
         if handle.simulated or not handle.resources:
             logger.info("k6_load_stopped", extra={"experiment_id": handle.experiment_id, "simulated": True})
             return
         job = next((r for r in handle.resources if r.kind == "Job"), None)
         cm = next((r for r in handle.resources if r.kind == "ConfigMap"), None)
         if job and cm:
-            await delete_k6_job(job.namespace, job.name, cm.name)
+            await delete_k6_job(job.namespace, job.name, cm.name, kube_context=kube_context)
         logger.info("k6_load_stopped", extra={"experiment_id": handle.experiment_id, "simulated": False})

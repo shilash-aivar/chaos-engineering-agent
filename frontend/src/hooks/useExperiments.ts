@@ -75,7 +75,7 @@ export function useAbortExperiment() {
     mutationFn: abortExperiment,
     onSuccess: (_data, experimentId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.experiment(experimentId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.experiments })
+      void queryClient.invalidateQueries({ queryKey: ['experiments'] })
     },
   })
 }

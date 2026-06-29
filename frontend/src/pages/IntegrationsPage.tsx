@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PageHeader, PageShell } from '@/components/layout/PageChrome'
+import { ConnectorConfigForm } from '@/components/integrations/ConnectorConfigForm'
 import { useIntegrations, useTestIntegration } from '@/hooks/usePlatform'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ export function IntegrationsPage() {
   const { data: integrations = [], isLoading } = useIntegrations()
   const testMutation = useTestIntegration()
   const [lastResult, setLastResult] = useState<Record<string, string>>({})
+  const [configuring, setConfiguring] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -26,7 +28,7 @@ export function IntegrationsPage() {
     <PageShell>
       <PageHeader
         title="Integrations"
-        description="Observability, GitHub, PagerDuty, and Slack connectivity — probed live from the API."
+        description="Connect Prometheus, Grafana, Loki, Tempo, GitHub, PagerDuty, Slack, and Anthropic from the console. Settings are saved to config/connectors.yaml and apply without restart."
       />
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -57,21 +59,38 @@ export function IntegrationsPage() {
             {lastResult[integration.id] && (
               <p className="mt-2 text-xs text-muted-foreground">{lastResult[integration.id]}</p>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              disabled={integration.status === 'planned' || testMutation.isPending}
-              onClick={async () => {
-                const result = await testMutation.mutateAsync(integration.id)
-                setLastResult((prev) => ({
-                  ...prev,
-                  [integration.id]: `${result.ok ? 'OK' : 'Failed'} (${result.latency_ms}ms): ${result.message}`,
-                }))
-              }}
-            >
-              {integration.status === 'connected' ? 'Test connection' : 'Probe'}
-            </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {integration.configurable !== false && (
+                <Button
+                  variant={configuring === integration.id ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() =>
+                    setConfiguring((current) =>
+                      current === integration.id ? null : integration.id,
+                    )
+                  }
+                >
+                  {configuring === integration.id ? 'Close' : 'Configure'}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={integration.status === 'planned' || testMutation.isPending}
+                onClick={async () => {
+                  const result = await testMutation.mutateAsync(integration.id)
+                  setLastResult((prev) => ({
+                    ...prev,
+                    [integration.id]: `${result.ok ? 'OK' : 'Failed'} (${result.latency_ms}ms): ${result.message}`,
+                  }))
+                }}
+              >
+                {integration.status === 'connected' ? 'Test connection' : 'Probe'}
+              </Button>
+            </div>
+            {configuring === integration.id && (
+              <ConnectorConfigForm integrationId={integration.id} />
+            )}
           </section>
         ))}
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { TopologyGraph } from '@/components/infrastructure/TopologyGraph'
 import { EvidencePanel } from '@/components/observability/EvidencePanel'
@@ -139,12 +139,21 @@ export function ExperimentDetailPage() {
               Abort & rollback
             </Button>
           )}
+          {EVIDENCE_STATES.has(exp.state) && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/new?prior=${id}`}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Iterate from results
+              </Link>
+            </Button>
+          )}
         </div>
       </section>
 
       <Tabs defaultValue="overview" className="mt-6">
         <TabsList className="bg-muted/50">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="metrics" disabled={!showLivePreview}>
             Metrics
           </TabsTrigger>
@@ -199,6 +208,53 @@ export function ExperimentDetailPage() {
               ))}
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="plan" className="space-y-4">
+          {exp.plan ? (
+            <div className="surface-card rounded-lg p-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Faults
+                  </p>
+                  <ul className="space-y-1.5">
+                    {exp.plan.faults.map((f, i) => (
+                      <li
+                        key={i}
+                        className="rounded-md border border-border bg-card/50 px-3 py-2 font-mono text-xs"
+                      >
+                        {f.executor}/{f.type} → {f.target}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Watch metrics
+                  </p>
+                  <ul className="space-y-1.5">
+                    {exp.plan.watch_metrics.map((m) => (
+                      <li
+                        key={m}
+                        className="rounded-md border border-border bg-card/50 px-3 py-2 font-mono text-xs text-muted-foreground"
+                      >
+                        {m}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-muted-foreground">
+                Rollback: {exp.plan.rollback.type}
+                {exp.plan.rollback.ttl_seconds
+                  ? ` · TTL ${exp.plan.rollback.ttl_seconds}s`
+                  : ''}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Plan not available for this experiment.</p>
+          )}
         </TabsContent>
 
         <TabsContent value="metrics" className="space-y-4">

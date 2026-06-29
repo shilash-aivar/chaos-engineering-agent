@@ -1,9 +1,14 @@
 import axios from 'axios'
+import { apiAuthHeaders } from '@/lib/apiAuth'
 import type {
   ComposeResponse,
+  ContextAgentResult,
   ContextAnalysisResult,
   ContextIngestResponse,
   ContextSnapshot,
+  ContextSnapshotSummary,
+  ContextUnderstanding,
+  AwsProbeResult,
   DashboardStats,
   ExperimentDetail,
   ExperimentPlan,
@@ -26,6 +31,37 @@ const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 })
+
+api.interceptors.request.use((config) => {
+  const auth = apiAuthHeaders()
+  if (auth['X-API-Key']) {
+    config.headers.set('X-API-Key', auth['X-API-Key'])
+  }
+  return config
+})
+
+export async function getBootstrapStatus(namespace = 'staging', contextId?: string) {
+  const { data } = await api.get<{
+    namespace: string
+    cluster: string
+    kube_context: string | null
+    live_data: boolean
+    actions: Array<{
+      id: string
+      action: string
+      scope: string
+      detail: string
+      status: string
+      detected: boolean
+      requires_approval: boolean
+      mutable: boolean
+    }>
+    summary: { done: number; pending: number }
+  }>('/bootstrap/status', {
+    params: { namespace, context_id: contextId },
+  })
+  return data
+}
 
 export async function getHealth() {
   const { data } = await api.get<{
@@ -308,8 +344,31 @@ export async function ingestContext(body: {
   readme_content?: string
   documents?: { name: string; content: string; type?: string }[]
   code_files?: Record<string, string>
+  manifest_files?: Record<string, string>
+  raw_files?: Record<string, string>
 }) {
   const { data } = await api.post<ContextIngestResponse>('/context/ingest', body)
+  return data
+}
+
+export async function pullGitHubContext(body: {
+  namespace?: string
+  path_prefix?: string
+  repo_name?: string
+}) {
+  const { data } = await api.post<ContextIngestResponse>('/context/pull-github', body)
+  return data
+}
+
+export async function getContextSnapshots(namespace = 'staging', limit = 20) {
+  const { data } = await api.get<{ snapshots: ContextSnapshotSummary[] }>('/context/snapshots', {
+    params: { namespace, limit },
+  })
+  return data.snapshots
+}
+
+export async function deleteContextSnapshot(snapshotId: string) {
+  const { data } = await api.delete<{ deleted: boolean; id: string }>(`/context/snapshots/${snapshotId}`)
   return data
 }
 
@@ -318,9 +377,49 @@ export async function getContextSnapshot(namespace = 'staging') {
   return data
 }
 
+export async function getContextSnapshotById(snapshotId: string) {
+  const { data } = await api.get<ContextSnapshot>(`/context/snapshot/${snapshotId}`)
+  return data
+}
+
 export async function getContextAnalysis(namespace = 'staging', refresh = false) {
   const { data } = await api.get<ContextAnalysisResult>('/context/analysis', {
     params: { namespace, refresh },
+  })
+  return data
+}
+
+export async function getContextAnalysisById(snapshotId: string, refresh = false) {
+  const { data } = await api.get<ContextAnalysisResult>(`/context/analysis/${snapshotId}`, {
+    params: { refresh },
+  })
+  return data
+}
+
+export async function getContextUnderstanding(namespace = 'staging', snapshotId?: string) {
+  const { data } = await api.get<{
+    snapshot_id: string
+    repo_name: string
+    namespace: string
+    aws?: { source?: string; region?: string; account_id?: string; fallback_reason?: string }
+    understanding: ContextUnderstanding
+  }>('/context/understanding', { params: { namespace, snapshot_id: snapshotId } })
+  return data
+}
+
+export async function runContextAgent(body: {
+  problem_statement?: string
+  namespace?: string
+  context_id?: string
+  max_iterations?: number
+}) {
+  const { data } = await api.post<ContextAgentResult>('/agents/context/understand', body)
+  return data
+}
+
+export async function getAwsProbe(namespace = 'staging', contextId?: string) {
+  const { data } = await api.get<AwsProbeResult>('/context/aws-probe', {
+    params: { namespace, context_id: contextId },
   })
   return data
 }
@@ -492,6 +591,21 @@ export async function runLoadScenario(
 export async function getIntegrations() {
   const { data } = await api.get<{ integrations: IntegrationConfig[] }>('/integrations')
   return data.integrations
+}
+
+export async function getConnectorConfig(integrationId: string) {
+  const { data } = await api.get<import('@/types').ConnectorConfigResponse>(
+    `/integrations/${integrationId}/config`,
+  )
+  return data
+}
+
+export async function saveConnectorConfig(integrationId: string, values: Record<string, string>) {
+  const { data } = await api.put<{ saved: boolean; id: string; path: string }>(
+    `/integrations/${integrationId}/config`,
+    { values },
+  )
+  return data
 }
 
 export async function getChaosDna(namespace = 'staging') {
