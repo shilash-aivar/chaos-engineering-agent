@@ -115,19 +115,10 @@ export async function composeFullScenario(
     use_latest_feedback?: boolean
   },
 ) {
-  const { data } = await api.post<{
-    plan: ExperimentPlan
-    summary: string
-    composer: 'llm' | 'rules'
-    pre_mortem: Record<string, unknown>
-    referee: { passed: boolean; errors: string[] }
-    twin_preview?: Record<string, unknown>
-    prior_feedback?: Record<string, unknown>
-    llm_grounded?: boolean
-  }>('/experiments/compose-full', {
+  const { data } = await api.post<ComposeResponse>('/experiments/compose-full', {
     scenario,
     namespace,
-    environment: options?.environment ?? namespace === 'production' ? 'production' : 'staging',
+    environment: options?.environment ?? (namespace === 'production' ? 'production' : 'staging'),
     prior_experiment_id: options?.prior_experiment_id,
     use_latest_feedback: options?.use_latest_feedback ?? false,
   })
@@ -411,10 +402,39 @@ export async function runContextAgent(body: {
   problem_statement?: string
   namespace?: string
   context_id?: string
+  service?: string
   max_iterations?: number
 }) {
   const { data } = await api.post<ContextAgentResult>('/agents/context/understand', body)
   return data
+}
+
+export async function getLatestContextAgentRun(namespace = 'staging') {
+  try {
+    const { data } = await api.get<ContextAgentResult>('/agents/context/latest', {
+      params: { namespace },
+    })
+    return data
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null
+    throw err
+  }
+}
+
+export async function getContextAgentRuns(namespace = 'staging', limit = 20) {
+  const { data } = await api.get<{
+    runs: Array<{
+      id: string
+      namespace: string
+      context_id?: string
+      problem_statement: string
+      mode: 'llm' | 'rules'
+      confidence: 'high' | 'medium' | 'low'
+      service?: string | null
+      created_at: string
+    }>
+  }>('/agents/context/runs', { params: { namespace, limit } })
+  return data.runs
 }
 
 export async function getAwsProbe(namespace = 'staging', contextId?: string) {

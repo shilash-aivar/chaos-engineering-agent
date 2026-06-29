@@ -48,6 +48,7 @@ class ComposeFullResponse(BaseModel):
     referee: dict[str, Any]
     twin_preview: Optional[dict[str, Any]] = None
     prior_feedback: Optional[dict[str, Any]] = None
+    context_agent: Optional[dict[str, Any]] = None
     llm_grounded: bool = False
 
 
@@ -158,6 +159,7 @@ async def compose_full_route(body: ComposeFullRequest) -> ComposeFullResponse:
         referee=result["referee"],
         twin_preview=result.get("twin_preview"),
         prior_feedback=result.get("prior_feedback"),
+        context_agent=result.get("context_agent"),
         llm_grounded=result.get("llm_grounded", False),
     )
 

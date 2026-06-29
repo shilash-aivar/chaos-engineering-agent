@@ -12,6 +12,7 @@ import {
   useAwsProbe,
   useDeleteContextSnapshot,
   useIngestContext,
+  useLatestContextAgentRun,
   usePullGitHubContext,
   useRefreshContextAnalysis,
   useRunContextAgent,
@@ -182,6 +183,7 @@ export function ContextPage() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [problemStatement, setProblemStatement] = useState('')
+  const [serviceScope, setServiceScope] = useState('')
   const [agentResult, setAgentResult] = useState<ContextAgentResult | null>(null)
 
   const { data: analysis, isLoading: analysisLoading } = useContextAnalysis(context.namespace, false)
@@ -190,6 +192,7 @@ export function ContextPage() {
     selectedSnapshotId ?? undefined,
   )
   const { data: awsProbe } = useAwsProbe(context.namespace, context.id)
+  const { data: latestAgentRun } = useLatestContextAgentRun(context.namespace)
   const { data: snapshots } = useContextSnapshots(context.namespace)
   const { data: infrastructure } = useInfrastructure()
   const { data: integrations } = useIntegrations()
@@ -288,6 +291,7 @@ export function ContextPage() {
         problem_statement: problemStatement.trim() || 'Understand this environment for chaos engineering.',
         namespace: context.namespace,
         context_id: context.id,
+        service: serviceScope.trim() || undefined,
       },
       {
         onSuccess: (result) => {
@@ -330,6 +334,7 @@ export function ContextPage() {
   }
 
   const u = understanding?.understanding
+  const displayedAgentResult = agentResult ?? latestAgentRun ?? null
 
   return (
     <PageShell>
@@ -398,6 +403,11 @@ export function ContextPage() {
           placeholder="e.g. Can checkout survive payments-db failover during peak traffic?"
           className="min-h-[80px] text-sm"
         />
+        <Input
+          value={serviceScope}
+          onChange={(e) => setServiceScope(e.target.value)}
+          placeholder="Optional service scope, e.g. checkout or payments-api"
+        />
       </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -410,7 +420,7 @@ export function ContextPage() {
         </TabsList>
 
         <TabsContent value="agent" className="mt-4 space-y-4">
-          {!agentResult ? (
+          {!displayedAgentResult ? (
             <section className="surface-card rounded-lg p-6 text-sm text-muted-foreground">
               Run the context agent to get an LLM-grounded infrastructure summary. It will probe K8s, AWS,
               integrations, posture, and declared context via tools before summarizing.
@@ -420,26 +430,34 @@ export function ContextPage() {
               <section className="surface-card rounded-lg p-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-semibold">Infrastructure summary</h2>
-                  <Badge variant="outline">{agentResult.mode}</Badge>
-                  <Badge variant="secondary">{agentResult.confidence} confidence</Badge>
-                  <Badge variant="outline">{agentResult.iterations} iterations</Badge>
+                  <Badge variant="outline">{displayedAgentResult.mode}</Badge>
+                  <Badge variant="secondary">{displayedAgentResult.confidence} confidence</Badge>
+                  <Badge variant="outline">{displayedAgentResult.iterations} iterations</Badge>
+                  {displayedAgentResult.service && (
+                    <Badge variant="outline">service: {displayedAgentResult.service}</Badge>
+                  )}
+                  {displayedAgentResult.created_at && (
+                    <Badge variant="outline">
+                      saved {new Date(displayedAgentResult.created_at).toLocaleString()}
+                    </Badge>
+                  )}
                 </div>
-                <p className="mt-3 text-sm leading-relaxed">{agentResult.summary}</p>
+                <p className="mt-3 text-sm leading-relaxed">{displayedAgentResult.summary}</p>
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <div>
                     <p className="text-[10px] font-semibold uppercase text-muted-foreground">Infrastructure</p>
                     <pre className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed">
-                      {agentResult.infrastructure_overview}
+                      {displayedAgentResult.infrastructure_overview}
                     </pre>
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase text-muted-foreground">Problem framing</p>
-                    <p className="mt-2 text-sm text-muted-foreground">{agentResult.problem_framing}</p>
-                    {agentResult.data_gaps.length > 0 && (
+                    <p className="mt-2 text-sm text-muted-foreground">{displayedAgentResult.problem_framing}</p>
+                    {displayedAgentResult.data_gaps.length > 0 && (
                       <div className="mt-4">
                         <p className="text-[10px] font-semibold uppercase text-muted-foreground">Data gaps</p>
                         <ul className="mt-2 space-y-1 text-xs text-amber-600">
-                          {agentResult.data_gaps.map((g) => (
+                          {displayedAgentResult.data_gaps.map((g) => (
                             <li key={g}>• {g}</li>
                           ))}
                         </ul>
@@ -452,8 +470,8 @@ export function ContextPage() {
                 <section className="surface-card rounded-lg p-5">
                   <h3 className="text-sm font-semibold">Top risks</h3>
                   <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    {agentResult.top_risks.length ? (
-                      agentResult.top_risks.map((r) => <li key={r}>• {r}</li>)
+                    {displayedAgentResult.top_risks.length ? (
+                      displayedAgentResult.top_risks.map((r) => <li key={r}>• {r}</li>)
                     ) : (
                       <li>None identified</li>
                     )}
@@ -462,19 +480,30 @@ export function ContextPage() {
                 <section className="surface-card rounded-lg p-5">
                   <h3 className="text-sm font-semibold">Recommended chaos focus</h3>
                   <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    {agentResult.recommended_chaos_focus.map((f) => (
+                    {displayedAgentResult.recommended_chaos_focus.map((f) => (
                       <li key={f}>• {f}</li>
                     ))}
                   </ul>
                 </section>
               </div>
               <section className="surface-card rounded-lg p-5">
+                <h3 className="text-sm font-semibold">Progress</h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {(displayedAgentResult.progress_steps ?? []).map((step, i) => (
+                    <div key={`${step.tool}-${i}`} className="rounded-md border border-border px-3 py-2 text-xs">
+                      <p className="font-medium">{step.label}</p>
+                      <p className="text-muted-foreground">step {step.iteration} · {step.tool}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="surface-card rounded-lg p-5">
                 <h3 className="text-sm font-semibold">Tool trace</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Tools the agent called while building understanding
                 </p>
                 <div className="mt-3 max-h-64 space-y-2 overflow-auto">
-                  {agentResult.tool_trace.map((t, i) => (
+                  {displayedAgentResult.tool_trace.map((t, i) => (
                     <div key={`${t.tool}-${i}`} className="rounded-md border border-border px-3 py-2 text-xs">
                       <span className="font-mono font-medium">{t.tool}</span>
                       <span className="text-muted-foreground"> · step {t.iteration}</span>

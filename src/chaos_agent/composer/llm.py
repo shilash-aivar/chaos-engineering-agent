@@ -20,6 +20,7 @@ async def compose_with_llm(
     *,
     snapshot: Optional[InfraSnapshot] = None,
     prior_feedback: Optional[dict[str, Any]] = None,
+    context_agent: Optional[dict[str, Any]] = None,
     environment: str = "staging",
 ) -> Optional[tuple[ExperimentPlan, str]]:
     llm = get_llm_client()
@@ -56,6 +57,7 @@ async def compose_with_llm(
         "graph_edges": [e.model_dump() for e in snap.graph_edges],
         "evidence_hints": evidence,
         "prior_feedback": prior_feedback,
+        "context_agent": _composer_context_agent(context_agent),
     }
 
     if not live:
@@ -77,6 +79,8 @@ async def compose_with_llm(
         summary = str(data.get("summary") or "LLM composer mapped scenario to faults using infra snapshot.")
         if prior_feedback:
             summary = f"Follow-up plan after {prior_feedback.get('experiment_id')}: {summary}"
+        if context_agent:
+            summary = f"{summary} Context-agent grounding: {context_agent.get('summary', '')[:180]}"
         return plan, summary
     except Exception:
         return None
@@ -112,3 +116,19 @@ def _normalize_plan_payload(
         payload["watch_metrics"] = ["checkout_error_rate", "checkout_p99"]
 
     return payload
+
+
+def _composer_context_agent(context_agent: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not context_agent:
+        return None
+    return {
+        "summary": context_agent.get("summary"),
+        "infrastructure_overview": context_agent.get("infrastructure_overview"),
+        "problem_framing": context_agent.get("problem_framing"),
+        "top_risks": context_agent.get("top_risks", [])[:8],
+        "recommended_chaos_focus": context_agent.get("recommended_chaos_focus", [])[:6],
+        "confidence": context_agent.get("confidence"),
+        "data_gaps": context_agent.get("data_gaps", [])[:8],
+        "mode": context_agent.get("mode"),
+        "created_at": context_agent.get("created_at"),
+    }

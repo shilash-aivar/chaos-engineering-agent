@@ -19,6 +19,8 @@ export const queryKeys = {
     ['context', 'understanding', namespace, snapshotId ?? 'latest'] as const,
   awsProbe: (namespace: string, contextId?: string) =>
     ['context', 'aws-probe', namespace, contextId ?? 'default'] as const,
+  contextAgentLatest: (namespace: string) => ['agents', 'context', 'latest', namespace] as const,
+  contextAgentRuns: (namespace: string) => ['agents', 'context', 'runs', namespace] as const,
   attackFrameworks: ['red-blue', 'frameworks'] as const,
   remediationFindings: ['remediation', 'findings'] as const,
   experimentRemediation: (id: string) => ['remediation', 'experiments', id] as const,

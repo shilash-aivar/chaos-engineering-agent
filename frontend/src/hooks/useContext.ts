@@ -8,6 +8,8 @@ import {
   getContextTargets,
   getContextUnderstanding,
   getAwsProbe,
+  getContextAgentRuns,
+  getLatestContextAgentRun,
   ingestContext,
   pullGitHubContext,
   runContextAgent,
@@ -76,11 +78,33 @@ function invalidateContextQueries(queryClient: ReturnType<typeof useQueryClient>
   void queryClient.invalidateQueries({ queryKey: queryKeys.contextSnapshots(namespace) })
   void queryClient.invalidateQueries({ queryKey: queryKeys.contextAnalysis(namespace) })
   void queryClient.invalidateQueries({ queryKey: ['context', 'understanding', namespace] })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.contextAgentLatest(namespace) })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.contextAgentRuns(namespace) })
 }
 
 export function useRunContextAgent() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (body: Parameters<typeof runContextAgent>[0]) => runContextAgent(body),
+    onSuccess: (_data, variables) => {
+      invalidateContextQueries(queryClient, variables.namespace ?? 'staging')
+    },
+  })
+}
+
+export function useLatestContextAgentRun(namespace: string) {
+  return useQuery({
+    queryKey: queryKeys.contextAgentLatest(namespace),
+    queryFn: () => getLatestContextAgentRun(namespace),
+    retry: false,
+  })
+}
+
+export function useContextAgentRuns(namespace: string) {
+  return useQuery({
+    queryKey: queryKeys.contextAgentRuns(namespace),
+    queryFn: () => getContextAgentRuns(namespace),
+    staleTime: 30_000,
   })
 }
 

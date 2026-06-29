@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from typing import Any, Callable, Awaitable
 
+from chaos_agent.context.ingest import ingest_context
+from chaos_agent.context.sources.github import GitHubContextPuller
 from chaos_agent.context.understanding import understanding_from_snapshot
 from chaos_agent.graph.provenance import snapshot_is_live, snapshot_provenance
 from chaos_agent.graph.types import SnapshotContext
@@ -52,6 +55,18 @@ def tool_definitions() -> list[dict[str, Any]]:
             "input_schema": {"type": "object", "properties": {}, "required": []},
         },
         {
+            "name": "pull_github_context",
+            "description": "Pull Terraform/docs/manifests/code from the configured GitHub repo and ingest it as declared context.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path_prefix": {"type": "string", "description": "Optional repo path prefix to restrict pull"},
+                    "repo_name": {"type": "string", "description": "Optional display name for ingested context"},
+                },
+                "required": [],
+            },
+        },
+        {
             "name": "get_context_analysis",
             "description": "Get declared-vs-observed context analysis gaps and blue suggestions if ingested.",
             "input_schema": {"type": "object", "properties": {}, "required": []},
@@ -88,9 +103,15 @@ def tool_definitions() -> list[dict[str, Any]]:
 
 
 class ContextToolRegistry:
-    def __init__(self, namespace: str, context_id: str | None = None) -> None:
+    def __init__(
+        self,
+        namespace: str,
+        context_id: str | None = None,
+        service: str | None = None,
+    ) -> None:
         self.namespace = namespace
         self.context_id = context_id
+        self.service = service.strip() if service else None
         ctx = get_context_by_id(context_id) if context_id else get_context_for_namespace(namespace)
         self._ctx = ctx
 
@@ -101,6 +122,7 @@ class ContextToolRegistry:
             "probe_target": self._probe_target,
             "get_posture_gaps": self._get_posture_gaps,
             "get_declared_context": self._get_declared_context,
+            "pull_github_context": self._pull_github_context,
             "get_context_analysis": self._get_context_analysis,
             "get_integrations": self._get_integrations,
         }
@@ -129,12 +151,19 @@ class ContextToolRegistry:
         return {
             "live_data": snapshot_is_live(snapshot),
             "collection_sources": snapshot_provenance(snapshot),
-            "applications": [a.model_dump() for a in snapshot.applications],
-            "dependencies": [d.model_dump() for d in snapshot.dependencies],
+            "applications": [
+                a.model_dump() for a in snapshot.applications if self._matches_service(a.name)
+            ],
+            "dependencies": [
+                d.model_dump()
+                for d in snapshot.dependencies
+                if self._matches_service(d.name) or self._matches_service(d.owner_service)
+            ],
             "kubernetes": snapshot.kubernetes,
             "aws": snapshot.aws,
             "observability": [o.model_dump() for o in snapshot.observability],
-            "evidence_hints": builder.evidence_lines(snapshot)[:15],
+            "evidence_hints": self._filter_lines(builder.evidence_lines(snapshot))[:15],
+            "service_scope": self.service,
         }
 
     async def _probe_aws(self, **_kwargs: Any) -> dict[str, Any]:
@@ -147,7 +176,16 @@ class ContextToolRegistry:
     async def _get_posture_gaps(self, **_kwargs: Any) -> dict[str, Any]:
         scanner = PostureScanner(self.namespace)
         scanner.builder = snapshot_builder_for_namespace(self.namespace, self.context_id)
-        return await scanner.scan()
+        result = deepcopy(await scanner.scan())
+        if self.service:
+            result["gaps"] = [
+                g for g in result.get("gaps", []) if self._matches_service(g.get("service", ""))
+            ]
+            result["summary"] = {
+                scope: sum(1 for g in result["gaps"] if g.get("scope") == scope)
+                for scope in ("k8s", "aws", "app", "deps", "observability")
+            }
+        return result
 
     async def _get_declared_context(self, **_kwargs: Any) -> dict[str, Any]:
         factory = get_session_factory()
@@ -160,6 +198,9 @@ class ContextToolRegistry:
             builder = snapshot_builder_for_namespace(self.namespace, self.context_id)
             infra = await builder.build()
             understanding = understanding_from_snapshot(snap, infra)
+            claims = [c for d in snap.declared.documents for c in d.claims]
+            manifest_hints = self._filter_lines(snap.declared.manifest_hints)
+            code_hints = self._filter_lines(snap.declared.code_hints)
             return {
                 "found": True,
                 "snapshot_id": snap.id,
@@ -169,9 +210,55 @@ class ContextToolRegistry:
                 "documents": len(snap.declared.documents),
                 "manifest_files": len(snap.declared.manifest_sources),
                 "code_files": len(snap.declared.code_sources),
-                "claims": [c for d in snap.declared.documents for c in d.claims],
+                "claims": claims,
+                "manifest_hints": manifest_hints[:20],
+                "code_hints": code_hints[:20],
                 "understanding": understanding,
             }
+
+    async def _pull_github_context(
+        self,
+        path_prefix: str = "",
+        repo_name: str | None = None,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        puller = GitHubContextPuller()
+        if not puller.configured:
+            return {"pulled": False, "reason": "GitHub connector not configured"}
+
+        classified, meta = await puller.pull(path_prefix)
+        total = (
+            len(classified.terraform_files)
+            + len(classified.documents)
+            + len(classified.manifest_files)
+            + len(classified.code_files)
+        )
+        if total == 0:
+            return {"pulled": False, "reason": "No readable context files found", "meta": meta}
+
+        snapshot = ingest_context(
+            repo_name=repo_name or f"{puller.org}/{puller.repo}",
+            namespace=self.namespace,
+            terraform_files=classified.terraform_files,
+            readme_content=classified.readme_content,
+            documents=classified.documents,
+            code_files=classified.code_files,
+            manifest_files=classified.manifest_files,
+        )
+        factory = get_session_factory()
+        async with factory() as session:
+            repo = ContextRepository(session)
+            row = await repo.save_ingest(snapshot)
+            analysis = await repo.run_analysis(row)
+
+        return {
+            "pulled": True,
+            "snapshot_id": snapshot.id,
+            "repo_name": snapshot.repo_name,
+            "meta": meta,
+            "declared_summary": analysis.declared_summary,
+            "gap_count": len(analysis.gaps),
+        }
 
     async def _get_context_analysis(self, **_kwargs: Any) -> dict[str, Any]:
         factory = get_session_factory()
@@ -185,7 +272,11 @@ class ContextToolRegistry:
                 analysis = await repo.run_analysis(row)
             return {
                 "found": True,
-                "gaps": [g.model_dump() for g in analysis.gaps[:20]],
+                "gaps": [
+                    g.model_dump()
+                    for g in analysis.gaps
+                    if self._matches_service(g.service)
+                ][:20],
                 "blue_suggestions": [s.model_dump() for s in analysis.blue_suggestions[:10]],
                 "posture_summary": analysis.posture_summary,
                 "declared_summary": analysis.declared_summary,
@@ -199,6 +290,17 @@ class ContextToolRegistry:
                 for i in integrations
             ],
         }
+
+    def _matches_service(self, value: str) -> bool:
+        if not self.service:
+            return True
+        return self.service.lower() in str(value).lower()
+
+    def _filter_lines(self, lines: list[str]) -> list[str]:
+        if not self.service:
+            return lines
+        matched = [line for line in lines if self._matches_service(line)]
+        return matched or lines
 
 
 def truncate_tool_result(data: dict[str, Any], max_chars: int = 12_000) -> str:

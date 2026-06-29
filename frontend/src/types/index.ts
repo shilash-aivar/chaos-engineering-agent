@@ -242,11 +242,14 @@ export interface AwsProbeResult {
 }
 
 export interface ContextAgentResult {
+  id?: string
+  created_at?: string
   mode: 'llm' | 'rules'
   iterations: number
   problem_statement: string
   namespace: string
   target_label: string
+  service?: string | null
   summary: string
   infrastructure_overview: string
   problem_framing: string
@@ -254,6 +257,11 @@ export interface ContextAgentResult {
   recommended_chaos_focus: string[]
   confidence: 'high' | 'medium' | 'low'
   data_gaps: string[]
+  progress_steps?: Array<{
+    tool: string
+    iteration: number
+    label: string
+  }>
   tool_trace: Array<{
     tool: string
     input?: Record<string, unknown>
@@ -404,6 +412,12 @@ export interface ComposeResponse {
   plan: ExperimentPlan
   summary: string
   composer?: 'llm' | 'rules'
+  pre_mortem?: Record<string, unknown>
+  referee?: { passed: boolean; errors: string[] }
+  twin_preview?: Record<string, unknown>
+  prior_feedback?: Record<string, unknown>
+  context_agent?: ContextAgentResult | null
+  llm_grounded?: boolean
 }
 
 export interface RoadmapPhase {

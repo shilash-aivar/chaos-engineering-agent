@@ -61,6 +61,19 @@ class ContextSnapshotRow(Base):
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ContextAgentRunRow(Base):
+    __tablename__ = "context_agent_runs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(128), index=True)
+    context_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    problem_statement: Mapped[str] = mapped_column(Text)
+    mode: Mapped[str] = mapped_column(String(32))
+    confidence: Mapped[str] = mapped_column(String(32))
+    result_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AttackPlanRow(Base):
     __tablename__ = "attack_plans"
 

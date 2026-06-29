@@ -64,6 +64,24 @@ def test_terraform_parser_extracts_resources() -> None:
     assert rds.source_file == "infra/rds.tf"
 
 
+def test_terraform_parser_keeps_nested_hcl_blocks() -> None:
+    resources = parse_terraform(
+        '''
+resource "aws_sqs_queue" "orders" {
+  name = "orders"
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.orders_dlq.arn
+    maxReceiveCount     = 5
+  })
+}
+''',
+        source_file="infra/sqs.tf",
+    )
+    queue = next(r for r in resources if r.type == "aws_sqs_queue")
+    assert queue.attributes["name"] == "orders"
+    assert "redrive_policy" in queue.attributes
+
+
 @pytest.mark.asyncio
 async def test_analyze_context_produces_gaps() -> None:
     snapshot = ingest_context(

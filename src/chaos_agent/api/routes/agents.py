@@ -30,6 +30,7 @@ from chaos_agent.remediator.templates.runbook import render_runbook
 from chaos_agent.remediator.verify import verify_finding
 from chaos_agent.security.types import BlueDefense, RedAttack
 from chaos_agent.storage.database import get_session_factory
+from chaos_agent.storage.repositories.context_agent import ContextAgentRepository
 from chaos_agent.storage.repositories.experiments import ExperimentRepository
 
 router = APIRouter()
@@ -125,18 +126,63 @@ class ContextUnderstandRequest(BaseModel):
     problem_statement: str = ""
     namespace: str = "staging"
     context_id: Optional[str] = None
+    service: Optional[str] = None
     max_iterations: int = 8
+    persist: bool = True
 
 
 @router.post("/context/understand")
 async def context_understand(body: ContextUnderstandRequest) -> dict[str, Any]:
     """Run the context agent loop: tools → LLM reasoning → infrastructure summary."""
-    return await run_context_agent(
+    result = await run_context_agent(
         problem_statement=body.problem_statement,
         namespace=body.namespace,
         context_id=body.context_id,
+        service=body.service,
         max_iterations=body.max_iterations,
     )
+    if body.persist:
+        factory = get_session_factory()
+        async with factory() as session:
+            repo = ContextAgentRepository(session)
+            row = await repo.save_run(result, context_id=body.context_id)
+            result["id"] = row.id
+            result["created_at"] = row.created_at.isoformat()
+    return result
+
+
+@router.get("/context/runs")
+async def context_agent_runs(namespace: str = "staging", limit: int = 20) -> dict[str, Any]:
+    factory = get_session_factory()
+    async with factory() as session:
+        repo = ContextAgentRepository(session)
+        rows = await repo.list_runs(namespace, limit=limit)
+        return {
+            "runs": [
+                {
+                    "id": row.id,
+                    "namespace": row.namespace,
+                    "context_id": row.context_id,
+                    "problem_statement": row.problem_statement,
+                    "mode": row.mode,
+                    "confidence": row.confidence,
+                    "service": ContextAgentRepository.row_to_result(row).get("service"),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ],
+        }
+
+
+@router.get("/context/latest")
+async def latest_context_agent_run(namespace: str = "staging") -> dict[str, Any]:
+    factory = get_session_factory()
+    async with factory() as session:
+        repo = ContextAgentRepository(session)
+        row = await repo.latest(namespace)
+        if row is None:
+            raise HTTPException(status_code=404, detail="No context agent run found")
+        return ContextAgentRepository.row_to_result(row)
 
 
 @router.post("/composer/compose-full")
@@ -157,6 +203,7 @@ async def composer_compose_full(body: ComposeFullRequest) -> dict[str, Any]:
         "referee": result["referee"],
         "twin_preview": result.get("twin_preview"),
         "prior_feedback": result.get("prior_feedback"),
+        "context_agent": result.get("context_agent"),
         "llm_grounded": result.get("llm_grounded", False),
     }
 

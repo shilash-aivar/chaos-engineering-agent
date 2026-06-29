@@ -18,6 +18,8 @@ Rules:
 - always include watch_metrics for steady-state guard
 - cite infra_evidence lines from snapshot; if collection_sources show seed/catalog, say so in evidence
 - if prior_feedback is present, adjust the plan to test fixes or avoid repeated failures
+- if context_agent is present, use its infrastructure_overview, top_risks, data_gaps, and recommended_chaos_focus
+  to select targets and explain infra_evidence; never ignore a high-confidence context-agent risk
 
 Respond with ONLY a JSON object:
 {

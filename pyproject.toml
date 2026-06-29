@@ -34,6 +34,7 @@ dependencies = [
     "langchain-anthropic>=0.3.0",
     "prometheus-client>=0.21.0",
     "websockets>=14.0",
+    "python-hcl2>=8.1.2",
 ]
 
 [project.optional-dependencies]

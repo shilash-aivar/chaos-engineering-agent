@@ -21,10 +21,11 @@ async def run_context_agent(
     problem_statement: str,
     namespace: str = "staging",
     context_id: str | None = None,
+    service: str | None = None,
     max_iterations: int = MAX_ITERATIONS,
 ) -> dict[str, Any]:
     """Run the context understanding agent loop. Returns summary + tool trace."""
-    registry = ContextToolRegistry(namespace, context_id)
+    registry = ContextToolRegistry(namespace, context_id, service=service)
     ctx = get_context_by_id(context_id) if context_id else get_context_for_namespace(namespace)
     target_label = ctx.get("label", f"{namespace}") if ctx else namespace
 
@@ -35,9 +36,10 @@ async def run_context_agent(
             problem_statement=problem_statement,
             namespace=namespace,
             target_label=target_label,
+            service=service,
         )
 
-    initial_user = _build_initial_message(problem_statement, namespace, target_label, ctx)
+    initial_user = _build_initial_message(problem_statement, namespace, target_label, ctx, service)
     messages: list[dict[str, Any]] = [{"role": "user", "content": initial_user}]
     tool_trace: list[dict[str, Any]] = []
     tools = tool_definitions()
@@ -57,6 +59,7 @@ async def run_context_agent(
                 target_label=target_label,
                 tool_trace=tool_trace,
                 reason="llm_call_failed",
+                service=service,
             )
 
         assistant_content = response["content"]
@@ -83,6 +86,7 @@ async def run_context_agent(
                     problem_statement=problem_statement,
                     namespace=namespace,
                     target_label=target_label,
+                    service=service,
                 )
             break
 
@@ -102,6 +106,7 @@ async def run_context_agent(
                     problem_statement=problem_statement,
                     namespace=namespace,
                     target_label=target_label,
+                    service=service,
                 )
 
             result = await registry.execute(name, tool_input)
@@ -130,6 +135,7 @@ async def run_context_agent(
         target_label=target_label,
         tool_trace=tool_trace,
         reason="max_iterations",
+        service=service,
     )
 
 
@@ -138,11 +144,14 @@ def _build_initial_message(
     namespace: str,
     target_label: str,
     ctx: dict[str, Any] | None,
+    service: str | None,
 ) -> str:
     parts = [
         f"Target: {target_label} (namespace={namespace})",
         f"Problem statement: {problem_statement or 'General resilience assessment — understand this environment.'}",
     ]
+    if service:
+        parts.append(f"Service scope: {service}. Focus on this service and its direct dependencies.")
     if ctx:
         parts.append(
             f"Configured scope: cluster={ctx.get('cluster')}, aws_region={ctx.get('aws_region')}, "
@@ -166,6 +175,7 @@ def _wrap_finish(
     problem_statement: str,
     namespace: str,
     target_label: str,
+    service: str | None = None,
 ) -> dict[str, Any]:
     return {
         "mode": mode,
@@ -173,6 +183,8 @@ def _wrap_finish(
         "problem_statement": problem_statement,
         "namespace": namespace,
         "target_label": target_label,
+        "service": service,
+        "progress_steps": _progress_steps(tool_trace),
         "summary": finish_payload.get("summary", ""),
         "infrastructure_overview": finish_payload.get("infrastructure_overview", ""),
         "problem_framing": finish_payload.get("problem_framing", problem_statement),
@@ -184,6 +196,28 @@ def _wrap_finish(
     }
 
 
+def _progress_steps(tool_trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    labels = {
+        "get_live_snapshot": "Collected live infrastructure snapshot",
+        "probe_aws": "Probed AWS account and regional resources",
+        "probe_target": "Checked target context and collection sources",
+        "get_integrations": "Checked connector health",
+        "pull_github_context": "Pulled declared context from GitHub",
+        "get_declared_context": "Read declared Terraform/docs/manifests",
+        "get_context_analysis": "Compared declared vs observed context",
+        "get_posture_gaps": "Scanned posture gaps",
+        "finish_understanding": "Produced final infrastructure summary",
+    }
+    return [
+        {
+            "tool": item.get("tool"),
+            "iteration": item.get("iteration", 0),
+            "label": labels.get(str(item.get("tool")), str(item.get("tool"))),
+        }
+        for item in tool_trace
+    ]
+
+
 async def _rules_fallback(
     *,
     registry: ContextToolRegistry,
@@ -192,6 +226,7 @@ async def _rules_fallback(
     target_label: str,
     tool_trace: list[dict[str, Any]] | None = None,
     reason: str = "llm_unavailable",
+    service: str | None = None,
 ) -> dict[str, Any]:
     """Deterministic fallback: run all read tools once and synthesize a summary."""
     trace = list(tool_trace or [])
@@ -201,19 +236,50 @@ async def _rules_fallback(
         "get_live_snapshot",
         "probe_aws",
         "probe_target",
+        "get_integrations",
         "get_posture_gaps",
         "get_declared_context",
-        "get_context_analysis",
-        "get_integrations",
     ):
         result = await registry.execute(tool_name, {})
         snapshots[tool_name] = result
         trace.append({"tool": tool_name, "input": {}, "iteration": 0, "result_preview": _preview(result)})
 
+    declared = snapshots.get("get_declared_context", {})
+    integrations = snapshots.get("get_integrations", {})
+    github_connected = any(
+        i.get("id") == "github" and i.get("status") == "connected"
+        for i in integrations.get("integrations", [])
+        if isinstance(i, dict)
+    )
+    if not declared.get("found") and github_connected:
+        result = await registry.execute("pull_github_context", {})
+        snapshots["pull_github_context"] = result
+        trace.append(
+            {
+                "tool": "pull_github_context",
+                "input": {},
+                "iteration": 0,
+                "result_preview": _preview(result),
+            },
+        )
+        declared = await registry.execute("get_declared_context", {})
+        snapshots["get_declared_context"] = declared
+        trace.append(
+            {
+                "tool": "get_declared_context",
+                "input": {},
+                "iteration": 0,
+                "result_preview": _preview(declared),
+            },
+        )
+
+    result = await registry.execute("get_context_analysis", {})
+    snapshots["get_context_analysis"] = result
+    trace.append({"tool": "get_context_analysis", "input": {}, "iteration": 0, "result_preview": _preview(result)})
+
     live = snapshots.get("get_live_snapshot", {})
     aws = snapshots.get("probe_aws", {})
     posture = snapshots.get("get_posture_gaps", {})
-    declared = snapshots.get("get_declared_context", {})
     gaps = snapshots.get("get_context_analysis", {})
 
     apps = [a.get("name", "?") for a in live.get("applications", []) if isinstance(a, dict)]
@@ -266,6 +332,7 @@ async def _rules_fallback(
         problem_statement=problem_statement,
         namespace=namespace,
         target_label=target_label,
+        service=service,
     )
 
 

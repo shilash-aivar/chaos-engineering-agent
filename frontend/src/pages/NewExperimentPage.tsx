@@ -7,7 +7,7 @@ import { useAgentStatus } from '@/hooks/useAgentStatus'
 import { useCreateExperiment, useExperiments } from '@/hooks/useExperiments'
 import { PageHeader, PageShell } from '@/components/layout/PageChrome'
 import { useAppStore } from '@/store/appStore'
-import type { ExperimentPlan } from '@/types'
+import type { ContextAgentResult, ExperimentPlan } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -35,6 +35,7 @@ export function NewExperimentPage() {
   const [preMortem, setPreMortem] = useState<Record<string, unknown> | null>(null)
   const [referee, setReferee] = useState<{ passed: boolean; errors: string[] } | null>(null)
   const [priorFeedback, setPriorFeedback] = useState<Record<string, unknown> | null>(null)
+  const [contextAgent, setContextAgent] = useState<ContextAgentResult | null>(null)
   const [llmGrounded, setLlmGrounded] = useState(false)
   const [composerMode, setComposerMode] = useState<'llm' | 'rules' | null>(null)
   const [composing, setComposing] = useState(false)
@@ -62,9 +63,10 @@ export function NewExperimentPage() {
       })
       setPlan(res.plan)
       setSummary(res.summary)
-      setPreMortem(res.pre_mortem)
-      setReferee(res.referee)
+      setPreMortem(res.pre_mortem ?? null)
+      setReferee(res.referee ?? null)
       setPriorFeedback(res.prior_feedback ?? null)
+      setContextAgent(res.context_agent ?? null)
       setLlmGrounded(Boolean(res.llm_grounded))
       setComposerMode(res.composer ?? (res.plan.source === 'llm' ? 'llm' : 'rules'))
     } catch {
@@ -208,6 +210,21 @@ export function NewExperimentPage() {
                     Follow-up from {String(priorFeedback.experiment_id)} · SLO breached:{' '}
                     {priorFeedback.slo_breached ? 'yes' : 'no'}
                   </p>
+                )}
+                {contextAgent && (
+                  <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">Context-agent grounded</span>
+                      <Badge variant="outline">{contextAgent.confidence} confidence</Badge>
+                      <Badge variant="outline">{contextAgent.mode}</Badge>
+                    </div>
+                    <p className="mt-1 text-primary/80">{contextAgent.summary}</p>
+                    {contextAgent.recommended_chaos_focus.length > 0 && (
+                      <p className="mt-1 text-primary/80">
+                        Focus: {contextAgent.recommended_chaos_focus.slice(0, 3).join(', ')}
+                      </p>
+                    )}
+                  </div>
                 )}
                 {preMortem && (
                   <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
